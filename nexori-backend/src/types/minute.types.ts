@@ -1,7 +1,9 @@
 export interface CreateMinuteInput {
   title: string;
   description: string;
-  type: 'incident' | 'novelty' | 'observation';
+  type: 'anotacion' | 'hurto' | 'novedad_vehiculo' | 'objetos_abandonados' |
+        'novedad' | 'observacion' | 'recomendacion' | 'nueva_marca' | 'incidente' |
+        'emergencia' | 'mantenimiento' | 'persona_sospechosa';
   location?: string;
   priority: 'low' | 'medium' | 'high';
   reportedByName: string;
@@ -11,10 +13,12 @@ export interface CreateMinuteInput {
 export interface UpdateMinuteInput {
   title?: string;
   description?: string;
-  type?: 'incident' | 'novelty' | 'observation';
+  type?: 'anotacion' | 'hurto' | 'novedad_vehiculo' | 'objetos_abandonados' |
+         'novedad' | 'observacion' | 'recomendacion' | 'nueva_marca' | 'incidente' |
+         'emergencia' | 'mantenimiento' | 'persona_sospechosa';
   location?: string;
   priority?: 'low' | 'medium' | 'high';
-  status?: 'pending' | 'in_progress' | 'resolved' | 'closed';
+  status?: 'pending' | 'reviewed' | 'closed';
   assignedTo?: string;
   assignedToName?: string;
   attachments?: string[];
@@ -41,8 +45,10 @@ export interface MinuteResponse {
   id: string;
   title: string;
   description: string;
-  type: 'incident' | 'novelty' | 'observation';
-  status: 'pending' | 'in_progress' | 'resolved' | 'closed';
+  type: 'anotacion' | 'hurto' | 'novedad_vehiculo' | 'objetos_abandonados' |
+        'novedad' | 'observacion' | 'recomendacion' | 'nueva_marca' | 'incidente' |
+        'emergencia' | 'mantenimiento' | 'persona_sospechosa';
+  status: 'pending' | 'reviewed' | 'closed';
   priority: 'low' | 'medium' | 'high';
   reportedBy: string;
   reportedByName: string;
@@ -51,7 +57,11 @@ export interface MinuteResponse {
   assignedToName?: string;
   attachments: string[];
   resolvedAt?: Date;
+  resolvedBy?: string;
+  resolvedByName?: string;
   closedAt?: Date;
+  closedBy?: string;
+  closedByName?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -67,13 +77,20 @@ export interface MinutesPaginated {
 export interface MinuteStats {
   total: number;
   pending: number;
-  in_progress: number;
-  resolved: number;
+  reviewed: number;
   closed: number;
   byType: {
-    incident: number;
-    novelty: number;
-    observation: number;
+    anotacion: number;
+    hurto: number;
+    novedad_vehiculo: number;
+    objetos_abandonados: number;
+    novedad: number;
+    observacion: number;
+    recomendacion: number;
+    incidente: number;
+    emergencia: number;
+    mantenimiento: number;
+    persona_sospechosa: number;
   };
   byPriority: {
     high: number;

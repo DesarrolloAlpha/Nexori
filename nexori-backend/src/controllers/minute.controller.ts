@@ -1,12 +1,11 @@
 import { Request, Response } from 'express';
-import { MinuteService } from '../services/minute.service';
+// 🔥 CORRECCIÓN: Importar desde el archivo del servicio, no desde server
+import { minuteService } from '../services/minute.service';
 import { 
   CreateMinuteInput, 
   UpdateMinuteInput, 
   MinuteFilter 
 } from '../types/minute.types';
-
-const minuteService = new MinuteService();
 
 export class MinuteController {
   /**
@@ -29,7 +28,19 @@ export class MinuteController {
       const userId = (req as any).user?.userId;
       
       const result = await minuteService.getAllMinutes(filters, userId);
-      res.json(result);
+      
+      res.json({
+        success: true,
+        data: {
+          minutes: result.minutes,
+          total: result.total,
+          page: result.page,
+          totalPages: result.totalPages,
+          hasMore: result.hasMore
+        },
+        message: 'Minutas obtenidas exitosamente'
+      });
+      
     } catch (error: any) {
       res.status(500).json({
         success: false,
@@ -144,7 +155,7 @@ export class MinuteController {
         });
       }
 
-      const result = await minuteService.deleteMinute(id, userId);
+      await minuteService.deleteMinute(id, userId);
       
       res.json({
         success: true,
@@ -278,7 +289,7 @@ export class MinuteController {
     }
   }
 
-    /**
+  /**
    * Eliminar archivo adjunto
    */
   static async deleteAttachment(req: Request, res: Response) {

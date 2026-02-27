@@ -1,0 +1,154 @@
+# ============================================================
+#  Nexori — Render.com Blueprint
+#  https://render.com/docs/blueprint-spec
+#
+#  Servicios:
+#   • nexori-api  → Web Service  (Node.js backend)
+#   • nexori-web  → Static Site  (React frontend)
+#   • nexori-db   → PostgreSQL   (base de datos gestionada)
+#
+#  ⚠️  ANTES DEL PRIMER DEPLOY:
+#   1. Haz fork/push del repo a GitHub
+#   2. Conecta el repo en Render → "New Blueprint"
+#   3. Render creará los 3 recursos automáticamente
+#   4. Ve a nexori-api → Environment → agrega manualmente:
+#        WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_ACCESS_TOKEN,
+#        WHATSAPP_BUSINESS_ACCOUNT_ID, ADMIN_DEFAULT_PASSWORD
+#   5. Primer deploy: TYPEORM_SYNCHRONIZE=true  (crea las tablas)
+#   6. Segundo deploy: cambia TYPEORM_SYNCHRONIZE=false
+#
+#  ⚠️  IMPORTANT — URLs:
+#   Si cambias el nombre del servicio "nexori-api" o "nexori-web",
+#   actualiza las variables ALLOWED_ORIGINS y VITE_API_URL abajo.
+# ============================================================
+
+services:
+
+  # ── BACKEND ────────────────────────────────────────────────────────────────
+  - type: web
+    name: nexori-api
+    runtime: node
+    plan: free
+    region: oregon
+    rootDir: nexori-backend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+
+    envVars:
+      # Entorno
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+
+      # URL pública (Render asigna <name>.onrender.com)
+      - key: SERVER_URL
+        value: https://nexori-api.onrender.com
+
+      # JWT — se generan automáticamente, seguros, nunca los cambies sin invalidar sesiones
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 1d
+      - key: JWT_REFRESH_EXPIRES_IN
+        value: 7d
+
+      # Base de datos — vinculadas al servicio nexori-db de abajo
+      - key: DB_HOST
+        fromDatabase:
+          name: nexori-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: nexori-db
+          property: port
+      - key: DB_USERNAME
+        fromDatabase:
+          name: nexori-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: nexori-db
+          property: password
+      - key: DB_DATABASE
+        fromDatabase:
+          name: nexori-db
+          property: database
+
+      # TypeORM
+      # ⚠️  PRIMER DEPLOY → true (crea todas las tablas)
+      # ⚠️  SEGUNDO DEPLOY → false (protege datos en producción)
+      - key: TYPEORM_SYNCHRONIZE
+        value: "true"
+      - key: TYPEORM_LOGGING
+        value: "false"
+
+      # CORS — orígenes permitidos (separados por coma)
+      - key: ALLOWED_ORIGINS
+        value: https://nexori-web.onrender.com
+
+      # Rate limiting
+      - key: RATE_LIMIT_WINDOW_MS
+        value: "900000"
+      - key: RATE_LIMIT_MAX
+        value: "1000"
+
+      # Uploads temporales
+      - key: UPLOAD_TEMP_DIR
+        value: ./temp_uploads
+
+      # Admin por defecto — setear manualmente en el dashboard de Render
+      - key: ADMIN_DEFAULT_PASSWORD
+        sync: false
+
+      # WhatsApp — setear manualmente en el dashboard de Render
+      - key: WHATSAPP_API_URL
+        value: https://graph.facebook.com/v21.0
+      - key: WHATSAPP_PHONE_NUMBER_ID
+        sync: false
+      - key: WHATSAPP_ACCESS_TOKEN
+        sync: false
+      - key: WHATSAPP_BUSINESS_ACCOUNT_ID
+        sync: false
+      - key: WHATSAPP_TEST_NUMBER
+        sync: false
+
+      # WhatsApp Webhook
+      # WHATSAPP_WEBHOOK_VERIFY_TOKEN: string libre, debe coincidir EXACTO con el que pongas en Meta
+      - key: WHATSAPP_WEBHOOK_VERIFY_TOKEN
+        value: nexori_verify_2026
+      # WHATSAPP_APP_SECRET: Meta > Tu App > Configuración básica > Clave secreta de la app
+      - key: WHATSAPP_APP_SECRET
+        sync: false
+
+  # ── FRONTEND WEB ───────────────────────────────────────────────────────────
+  - type: web
+    name: nexori-web
+    runtime: static
+    plan: free
+    region: oregon
+    rootDir: nexori-web
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    pullRequestPreviewsEnabled: false
+
+    # SPA routing — todas las rutas apuntan a index.html
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+    envVars:
+      # ⚠️  Si el nombre del backend no es "nexori-api", actualiza esta URL
+      - key: VITE_API_URL
+        value: https://nexori-api.onrender.com/api
+
+# ── BASE DE DATOS ───────────────────────────────────────────────────────────
+databases:
+  - name: nexori-db
+    databaseName: nexori_db
+    plan: free
+    region: oregon

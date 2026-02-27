@@ -1,16 +1,9 @@
 import { Request, Response } from 'express';
-import { AppDataSource } from '../config/database';
-import { PanicEvent } from '../models/PanicEvent.entity';
-import { User } from '../models/User.entity';
+import { panicService } from '../services/panic.service';
 import { ApiResponse } from '../types';
-
-const panicRepository = AppDataSource.getRepository(PanicEvent);
-const userRepository = AppDataSource.getRepository(User);
 
 export const createPanicEvent = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { latitude, longitude, address, priority } = req.body;
-    
     if (!req.user) {
       const response: ApiResponse = {
         success: false,
@@ -20,36 +13,11 @@ export const createPanicEvent = async (req: Request, res: Response): Promise<voi
       return;
     }
     
-    // Obtener usuario
-    const user = await userRepository.findOne({ 
-      where: { id: req.user.userId } 
-    });
-    
-    if (!user) {
-      const response: ApiResponse = {
-        success: false,
-        message: 'Usuario no encontrado',
-      };
-      res.status(404).json(response);
-      return;
-    }
-    
-    // Crear evento de pánico
-    const panicEvent = panicRepository.create({
-      userId: user.id,
-      userName: user.name,
-      latitude,
-      longitude,
-      address,
-      priority: priority || 'medium',
-      status: 'active',
-      timestamp: new Date(),
-    });
-    
-    await panicRepository.save(panicEvent);
-    
-    // Emitir evento WebSocket (en tiempo real)
-    // req.app.get('io').to('coordinators').to('admins').emit('new_panic_alert', panicEvent);
+    // ✅ Usar el servicio - él se encarga del socket
+    const panicEvent = await panicService.createPanicEvent(
+      req.user.userId,
+      req.user.userName
+    );
     
     const response: ApiResponse = {
       success: true,
@@ -59,6 +27,7 @@ export const createPanicEvent = async (req: Request, res: Response): Promise<voi
     
     res.status(201).json(response);
   } catch (error: any) {
+    console.error('❌ Error en createPanicEvent:', error);
     const response: ApiResponse = {
       success: false,
       message: error.message || 'Error al enviar alerta',
@@ -69,35 +38,14 @@ export const createPanicEvent = async (req: Request, res: Response): Promise<voi
 
 export const getAllPanicEvents = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { status, priority, startDate, endDate } = req.query;
-    
-    let query = panicRepository.createQueryBuilder('panic');
-    
-    // Aplicar filtros
-    if (status) {
-      query = query.where('panic.status = :status', { status });
-    }
-    
-    if (priority) {
-      query = query.andWhere('panic.priority = :priority', { priority });
-    }
-    
-    if (startDate) {
-      query = query.andWhere('panic.timestamp >= :startDate', { 
-        startDate: new Date(startDate as string) 
-      });
-    }
-    
-    if (endDate) {
-      query = query.andWhere('panic.timestamp <= :endDate', { 
-        endDate: new Date(endDate as string) 
-      });
-    }
-    
-    // Ordenar por fecha descendente (los más recientes primero)
-    query = query.orderBy('panic.timestamp', 'DESC');
-    
-    const events = await query.getMany();
+    const { status, startDate, endDate } = req.query;
+
+    // ✅ Usar el servicio con filtros
+    const events = await panicService.getAllPanicEvents({
+      status: status as string,
+      startDate: startDate ? new Date(startDate as string) : undefined,
+      endDate: endDate ? new Date(endDate as string) : undefined,
+    });
     
     const response: ApiResponse = {
       success: true,
@@ -107,6 +55,7 @@ export const getAllPanicEvents = async (req: Request, res: Response): Promise<vo
     
     res.status(200).json(response);
   } catch (error: any) {
+    console.error('❌ Error en getAllPanicEvents:', error);
     const response: ApiResponse = {
       success: false,
       message: error.message || 'Error al obtener eventos',
@@ -129,30 +78,25 @@ export const updatePanicEventStatus = async (req: Request, res: Response): Promi
       return;
     }
     
-    const panicEvent = await panicRepository.findOne({ where: { id } });
-    
-    if (!panicEvent) {
+    // Validar que el estado sea válido
+    const validStatuses = ['active', 'attended', 'resolved'];
+    if (!validStatuses.includes(status)) {
       const response: ApiResponse = {
         success: false,
-        message: 'Evento de pánico no encontrado',
+        message: 'Estado inválido',
       };
-      res.status(404).json(response);
+      res.status(400).json(response);
       return;
     }
     
-    // Actualizar estado
-    panicEvent.status = status;
-    panicEvent.attendedBy = req.user.userId;
-    panicEvent.attendedAt = new Date();
-    
-    if (notes) panicEvent.notes = notes;
-    
-    // Si el estado es "resolved", marcar fecha de resolución
-    if (status === 'resolved') {
-      panicEvent.resolvedAt = new Date();
-    }
-    
-    await panicRepository.save(panicEvent);
+    // ✅ Usar el servicio - él se encarga del socket
+    const panicEvent = await panicService.updatePanicStatus(
+      id,
+      status as 'active' | 'attended' | 'resolved',
+      notes,
+      req.user.userId,
+      req.user.userName
+    );
     
     const response: ApiResponse = {
       success: true,
@@ -162,9 +106,104 @@ export const updatePanicEventStatus = async (req: Request, res: Response): Promi
     
     res.status(200).json(response);
   } catch (error: any) {
+    console.error('❌ Error en updatePanicEventStatus:', error);
+    
+    // Manejar error específico de "no encontrado"
+    if (error.message === 'Evento de pánico no encontrado') {
+      const response: ApiResponse = {
+        success: false,
+        message: error.message,
+      };
+      res.status(404).json(response);
+      return;
+    }
+    
     const response: ApiResponse = {
       success: false,
       message: error.message || 'Error al actualizar estado',
+    };
+    res.status(500).json(response);
+  }
+};
+
+export const getPanicStatistics = async (req: Request, res: Response): Promise<void> => {
+  try {
+    // ✅ Usar el servicio para estadísticas
+    const statistics = await panicService.getPanicStatistics();
+    
+    const response: ApiResponse = {
+      success: true,
+      message: 'Estadísticas obtenidas exitosamente',
+      data: statistics,
+    };
+    
+    res.status(200).json(response);
+  } catch (error: any) {
+    console.error('❌ Error en getPanicStatistics:', error);
+    const response: ApiResponse = {
+      success: false,
+      message: error.message || 'Error al obtener estadísticas',
+    };
+    res.status(500).json(response);
+  }
+};
+
+export const uploadPanicImage = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const file = (req as any).file;
+
+    if (!req.user) {
+      res.status(401).json({ success: false, message: 'Usuario no autenticado' });
+      return;
+    }
+
+    if (!file) {
+      res.status(400).json({ success: false, message: 'Imagen es requerida' });
+      return;
+    }
+
+    const result = await panicService.uploadPanicImage(id, file, req.user.userId);
+    res.json(result);
+  } catch (error: any) {
+    console.error('❌ Error en uploadPanicImage:', error);
+    const statusCode = error.message === 'Evento de pánico no encontrado' ? 404 : 500;
+    res.status(statusCode).json({
+      success: false,
+      message: error.message || 'Error al subir imagen',
+    });
+  }
+};
+
+export const getPanicEventById = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    
+    // ✅ Usar el servicio
+    const panicEvent = await panicService.getPanicEventById(id);
+    
+    const response: ApiResponse = {
+      success: true,
+      message: 'Evento obtenido exitosamente',
+      data: { panicEvent },
+    };
+    
+    res.status(200).json(response);
+  } catch (error: any) {
+    console.error('❌ Error en getPanicEventById:', error);
+    
+    if (error.message === 'Evento de pánico no encontrado') {
+      const response: ApiResponse = {
+        success: false,
+        message: error.message,
+      };
+      res.status(404).json(response);
+      return;
+    }
+    
+    const response: ApiResponse = {
+      success: false,
+      message: error.message || 'Error al obtener evento',
     };
     res.status(500).json(response);
   }

@@ -1,41 +1,21 @@
 import { Request, Response } from 'express';
-import { AppDataSource } from '../config/database';
-import { Bike } from '../models/Bike.entity';
-import { User } from '../models/User.entity';
+import { bikeService } from '../services/bike.service';
 import { ApiResponse } from '../types';
-
-const bikeRepository = AppDataSource.getRepository(Bike);
-const userRepository = AppDataSource.getRepository(User);
 
 export const createBike = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { code, brand, model, color, ownerName, ownerId, notes } = req.body;
-
-    // Verificar si ya existe una bicicleta con el mismo código
-    const existingBike = await bikeRepository.findOne({ where: { code } });
-    if (existingBike) {
+    const userId = (req as any).user?.userId;
+    
+    if (!userId) {
       const response: ApiResponse = {
         success: false,
-        message: 'Ya existe una bicicleta con este código',
+        message: 'Usuario no autenticado',
       };
-      res.status(400).json(response);
+      res.status(401).json(response);
       return;
     }
 
-    // Crear nueva bicicleta
-    const bike = bikeRepository.create({
-      code,
-      brand,
-      model,
-      color,
-      ownerName,
-      ownerId,
-      notes,
-      status: 'in',
-      ...(req.user?.userId ? { registeredById: req.user.userId } : {}),
-    });
-
-    await bikeRepository.save(bike);
+    const bike = await bikeService.createBike(req.body, userId);
 
     const response: ApiResponse = {
       success: true,
@@ -49,7 +29,7 @@ export const createBike = async (req: Request, res: Response): Promise<void> => 
       success: false,
       message: error.message || 'Error al registrar bicicleta',
     };
-    res.status(500).json(response);
+    res.status(error.message.includes('Ya existe') ? 400 : 500).json(response);
   }
 };
 
@@ -57,25 +37,10 @@ export const getAllBikes = async (req: Request, res: Response): Promise<void> =>
   try {
     const { status, search } = req.query;
     
-    let query = bikeRepository.createQueryBuilder('bike');
-    
-    // Filtrar por estado si se proporciona
-    if (status) {
-      query = query.where('bike.status = :status', { status });
-    }
-    
-    // Buscar por código, marca, modelo o propietario
-    if (search) {
-      query = query.andWhere(
-        '(bike.code ILIKE :search OR bike.brand ILIKE :search OR bike.model ILIKE :search OR bike.ownerName ILIKE :search)',
-        { search: `%${search}%` }
-      );
-    }
-    
-    // Ordenar por fecha de creación descendente
-    query = query.orderBy('bike.createdAt', 'DESC');
-    
-    const bikes = await query.getMany();
+    const bikes = await bikeService.getAllBikes({
+      status: status as string,
+      search: search as string
+    });
     
     const response: ApiResponse = {
       success: true,
@@ -97,16 +62,7 @@ export const getBikeById = async (req: Request, res: Response): Promise<void> =>
   try {
     const { id } = req.params;
     
-    const bike = await bikeRepository.findOne({ where: { id } });
-    
-    if (!bike) {
-      const response: ApiResponse = {
-        success: false,
-        message: 'Bicicleta no encontrada',
-      };
-      res.status(404).json(response);
-      return;
-    }
+    const bike = await bikeService.getBikeById(id);
     
     const response: ApiResponse = {
       success: true,
@@ -120,45 +76,25 @@ export const getBikeById = async (req: Request, res: Response): Promise<void> =>
       success: false,
       message: error.message || 'Error al obtener bicicleta',
     };
-    res.status(500).json(response);
+    res.status(error.message.includes('no encontrada') ? 404 : 500).json(response);
   }
 };
 
 export const updateBike = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const updates = req.body;
+    const userId = (req as any).user?.userId;
     
-    const bike = await bikeRepository.findOne({ where: { id } });
-    
-    if (!bike) {
+    if (!userId) {
       const response: ApiResponse = {
         success: false,
-        message: 'Bicicleta no encontrada',
+        message: 'Usuario no autenticado',
       };
-      res.status(404).json(response);
+      res.status(401).json(response);
       return;
     }
     
-    // No permitir actualizar el código si ya existe otro con el mismo código
-    if (updates.code && updates.code !== bike.code) {
-      const existingBike = await bikeRepository.findOne({ 
-        where: { code: updates.code } 
-      });
-      
-      if (existingBike) {
-        const response: ApiResponse = {
-          success: false,
-          message: 'Ya existe una bicicleta con este código',
-        };
-        res.status(400).json(response);
-        return;
-      }
-    }
-    
-    // Actualizar bicicleta
-    Object.assign(bike, updates);
-    await bikeRepository.save(bike);
+    const bike = await bikeService.updateBike(id, req.body, userId);
     
     const response: ApiResponse = {
       success: true,
@@ -172,26 +108,26 @@ export const updateBike = async (req: Request, res: Response): Promise<void> => 
       success: false,
       message: error.message || 'Error al actualizar bicicleta',
     };
-    res.status(500).json(response);
+    res.status(error.message.includes('no encontrada') ? 404 : 
+             error.message.includes('Ya existe') ? 400 : 500).json(response);
   }
 };
 
 export const deleteBike = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
+    const userId = (req as any).user?.userId;
     
-    const bike = await bikeRepository.findOne({ where: { id } });
-    
-    if (!bike) {
+    if (!userId) {
       const response: ApiResponse = {
         success: false,
-        message: 'Bicicleta no encontrada',
+        message: 'Usuario no autenticado',
       };
-      res.status(404).json(response);
+      res.status(401).json(response);
       return;
     }
     
-    await bikeRepository.remove(bike);
+    await bikeService.deleteBike(id, userId);
     
     const response: ApiResponse = {
       success: true,
@@ -204,7 +140,7 @@ export const deleteBike = async (req: Request, res: Response): Promise<void> => 
       success: false,
       message: error.message || 'Error al eliminar bicicleta',
     };
-    res.status(500).json(response);
+    res.status(error.message.includes('no encontrada') ? 404 : 500).json(response);
   }
 };
 
@@ -212,37 +148,18 @@ export const checkInBike = async (req: Request, res: Response): Promise<void> =>
   try {
     const { id } = req.params;
     const { notes } = req.body;
+    const userId = (req as any).user?.userId;
     
-    const bike = await bikeRepository.findOne({ where: { id } });
-    
-    if (!bike) {
+    if (!userId) {
       const response: ApiResponse = {
         success: false,
-        message: 'Bicicleta no encontrada',
+        message: 'Usuario no autenticado',
       };
-      res.status(404).json(response);
+      res.status(401).json(response);
       return;
     }
     
-    if (bike.status === 'in') {
-      const response: ApiResponse = {
-        success: false,
-        message: 'La bicicleta ya está ingresada',
-      };
-      res.status(400).json(response);
-      return;
-    }
-    
-    // Actualizar estado a "in"
-    bike.status = 'in';
-    bike.lastCheckIn = new Date();
-    if (req.user?.userId) bike.checkInBy = req.user.userId;
-    if (notes) bike.notes = notes;
-    
-    await bikeRepository.save(bike);
-    
-    // Emitir evento WebSocket (si está configurado)
-    // req.app.get('io').to('operators').emit('bike_checked_in', bike);
+    const bike = await bikeService.checkInBike(id, notes, userId);
     
     const response: ApiResponse = {
       success: true,
@@ -256,7 +173,8 @@ export const checkInBike = async (req: Request, res: Response): Promise<void> =>
       success: false,
       message: error.message || 'Error al ingresar bicicleta',
     };
-    res.status(500).json(response);
+    res.status(error.message.includes('no encontrada') ? 404 : 
+             error.message.includes('ya está ingresada') ? 400 : 500).json(response);
   }
 };
 
@@ -264,46 +182,18 @@ export const checkOutBike = async (req: Request, res: Response): Promise<void> =
   try {
     const { id } = req.params;
     const { notes } = req.body;
+    const userId = (req as any).user?.userId;
     
-    const bike = await bikeRepository.findOne({ where: { id } });
-    
-    if (!bike) {
+    if (!userId) {
       const response: ApiResponse = {
         success: false,
-        message: 'Bicicleta no encontrada',
+        message: 'Usuario no autenticado',
       };
-      res.status(404).json(response);
+      res.status(401).json(response);
       return;
     }
     
-    if (bike.status === 'out') {
-      const response: ApiResponse = {
-        success: false,
-        message: 'La bicicleta ya está retirada',
-      };
-      res.status(400).json(response);
-      return;
-    }
-    
-    if (bike.status === 'maintenance') {
-      const response: ApiResponse = {
-        success: false,
-        message: 'La bicicleta está en mantenimiento',
-      };
-      res.status(400).json(response);
-      return;
-    }
-    
-    // Actualizar estado a "out"
-    bike.status = 'out';
-    bike.lastCheckOut = new Date();
-    if (req.user?.userId) bike.checkOutBy = req.user.userId;
-    if (notes) bike.notes = notes;
-    
-    await bikeRepository.save(bike);
-    
-    // Emitir evento WebSocket
-    // req.app.get('io').to('operators').emit('bike_checked_out', bike);
+    const bike = await bikeService.checkOutBike(id, notes, userId);
     
     const response: ApiResponse = {
       success: true,
@@ -317,7 +207,9 @@ export const checkOutBike = async (req: Request, res: Response): Promise<void> =
       success: false,
       message: error.message || 'Error al retirar bicicleta',
     };
-    res.status(500).json(response);
+    res.status(error.message.includes('no encontrada') ? 404 : 
+             error.message.includes('ya está retirada') ? 400 : 
+             error.message.includes('mantenimiento') ? 400 : 500).json(response);
   }
 };
 
@@ -325,26 +217,7 @@ export const getBikeHistory = async (req: Request, res: Response): Promise<void>
   try {
     const { id } = req.params;
     
-    const bike = await bikeRepository.findOne({ where: { id } });
-    
-    if (!bike) {
-      const response: ApiResponse = {
-        success: false,
-        message: 'Bicicleta no encontrada',
-      };
-      res.status(404).json(response);
-      return;
-    }
-    
-    // En una implementación real, podrías tener una tabla de historial
-    const history = {
-      bike,
-      totalCheckIns: bike.lastCheckIn ? 1 : 0,
-      totalCheckOuts: bike.lastCheckOut ? 1 : 0,
-      lastCheckIn: bike.lastCheckIn,
-      lastCheckOut: bike.lastCheckOut,
-      registeredAt: bike.createdAt,
-    };
+    const history = await bikeService.getBikeHistory(id);
     
     const response: ApiResponse = {
       success: true,
@@ -358,6 +231,6 @@ export const getBikeHistory = async (req: Request, res: Response): Promise<void>
       success: false,
       message: error.message || 'Error al obtener historial',
     };
-    res.status(500).json(response);
+    res.status(error.message.includes('no encontrada') ? 404 : 500).json(response);
   }
 };

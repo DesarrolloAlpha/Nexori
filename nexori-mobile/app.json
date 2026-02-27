@@ -1,0 +1,57 @@
+{
+  "expo": {
+    "name": "Nexori",
+    "slug": "nexori-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+
+    "icon": "./assets/icon.png",
+
+    "splash": {
+      "backgroundColor": "#191E2B",
+      "resizeMode": "contain"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.nexori.mobile",
+      "icon": "./assets/icon.png",
+      "infoPlist": {
+        "UIBackgroundModes": ["remote-notification"]
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon-foreground.png",
+        "backgroundColor": "#191E2B"
+      },
+      "package": "com.nexori.mobile",
+      "permissions": [
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE",
+        "POST_NOTIFICATIONS"
+      ]
+    },
+    "plugins": [
+      "expo-font",
+      "expo-barcode-scanner",
+      "expo-secure-store",
+      ["expo-image-picker", {
+        "photosPermission": "Acceso a fotos",
+        "cameraPermission": "Acceso a cámara"
+      }],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#191E2B",
+          "sounds": [],
+          "iosDisplayInForeground": true
+        }
+      ]
+    ]
+  }
+}

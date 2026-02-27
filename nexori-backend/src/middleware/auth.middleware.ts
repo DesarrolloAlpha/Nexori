@@ -8,6 +8,7 @@ declare global {
   namespace Express {
     interface Request {
       user?: {
+        userName:string;
         userId: string;
         email: string;
         role: UserRole;
@@ -51,14 +52,43 @@ export const authenticate = async (
 
     req.user = {
       userId: user.id,
+      userName: user.name,
       email: user.email,
       role: user.role,
     };
 
     next();
-  } catch (error) {
-    // ... mismo manejo de errores
+  } catch (error: any) {
+    if (error.name === 'TokenExpiredError') {
+      res.status(401).json({ success: false, message: 'Token expirado. Por favor inicia sesión nuevamente.' });
+    } else if (error.name === 'JsonWebTokenError') {
+      res.status(401).json({ success: false, message: 'Token inválido.' });
+    } else {
+      res.status(401).json({ success: false, message: 'No autorizado.' });
+    }
   }
 };
 
-// ... authorize function sigue igual
+export const authorize = (...allowedRoles: UserRole[]) => {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const user = req.user;
+    
+    if (!user) {
+      res.status(401).json({ 
+        success: false, 
+        message: 'Usuario no autenticado' 
+      });
+      return;
+    }
+
+    if (!allowedRoles.includes(user.role)) {
+      res.status(403).json({ 
+        success: false, 
+        message: 'No tienes permisos para acceder a este recurso' 
+      });
+      return;
+    }
+
+    next();
+  };
+};

@@ -1,0 +1,45 @@
+# Variables de entorno - NUNCA subir al repositorio
+.env
+.env.local
+.env.production
+.env.staging
+
+# Dependencias
+node_modules/
+**/node_modules/
+
+# Build
+dist/
+build/
+**/dist/
+**/build/
+
+# Logs
+*.log
+logs/
+**/logs/
+
+# Archivos temporales de subida
+temp_uploads/
+**/temp_uploads/
+
+# Uploads (archivos de usuarios, no van en git)
+uploads/
+**/uploads/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/settings.json
+.idea/
+
+# Claude Code (herramienta de desarrollo local)
+.claude/
+
+# Notas de diseño local
+.interface-design/
+
+# TypeScript incremental
+*.tsbuildinfo

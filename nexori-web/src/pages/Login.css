@@ -1,0 +1,579 @@
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-4);
+  position: relative;
+  overflow: hidden;
+}
+
+/* ================================================
+   ANIMATED BACKGROUND
+   ================================================ */
+
+.login-background {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, #191E2B 0%, #253045 50%, #1a2332 100%);
+  z-index: 0;
+}
+
+.gradient-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.6;
+  animation: float 20s ease-in-out infinite;
+}
+
+.orb-1 {
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, rgba(0, 198, 230, 0.4) 0%, transparent 70%);
+  top: -10%;
+  left: -10%;
+  animation-delay: 0s;
+}
+
+.orb-2 {
+  width: 400px;
+  height: 400px;
+  background: radial-gradient(circle, rgba(16, 185, 129, 0.3) 0%, transparent 70%);
+  bottom: -15%;
+  right: -15%;
+  animation-delay: 7s;
+}
+
+.orb-3 {
+  width: 350px;
+  height: 350px;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.3) 0%, transparent 70%);
+  top: 40%;
+  right: 10%;
+  animation-delay: 14s;
+}
+
+.mesh-gradient {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: 
+    repeating-linear-gradient(90deg, rgba(0, 198, 230, 0.03) 0px, transparent 1px, transparent 50px, rgba(0, 198, 230, 0.03) 51px),
+    repeating-linear-gradient(0deg, rgba(0, 198, 230, 0.03) 0px, transparent 1px, transparent 50px, rgba(0, 198, 230, 0.03) 51px);
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(30px, -30px) scale(1.1);
+  }
+  66% {
+    transform: translate(-20px, 20px) scale(0.9);
+  }
+}
+
+/* ================================================
+   GLASS CONTAINER - LIQUID GLASS EFFECT
+   ================================================ */
+
+.login-glass-container {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 480px;
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-radius: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 
+    0 8px 32px 0 rgba(0, 0, 0, 0.37),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.1);
+  padding: var(--spacing-6);
+  animation: slideInUp 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.login-glass-container::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(0, 198, 230, 0.5),
+    transparent
+  );
+  border-radius: 32px 32px 0 0;
+}
+
+/* ================================================
+   LOGO SECTION
+   ================================================ */
+
+.login-logo-section {
+  text-align: center;
+  margin-bottom: var(--spacing-6);
+}
+
+.logo-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: var(--spacing-2);
+}
+
+.logo-image {
+  width: 250px;
+  max-width: 70%;
+  height: auto;
+  display: block;
+  filter: drop-shadow(0 8px 32px rgba(0, 0, 0, 0.35));
+}
+
+/* ================================================
+   FORM SECTION
+   ================================================ */
+
+.login-form-section {
+  margin-bottom: var(--spacing-4);
+}
+
+.form-header {
+  text-align: center;
+  margin-bottom: var(--spacing-4);
+}
+
+.form-header h2 {
+  font-size: 1.875rem;
+  font-weight: 700;
+  color: var(--text-light);
+  margin-bottom: var(--spacing-2);
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+
+.form-header p {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.875rem;
+}
+
+.error-alert {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  padding: var(--spacing-3) var(--spacing-4);
+  background: rgba(239, 68, 68, 0.15);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: var(--radius-lg);
+  color: #FEE2E2;
+  font-size: 0.875rem;
+  margin-bottom: var(--spacing-4);
+  animation: shake 0.5s, fadeIn 0.3s;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-4);
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
+.form-group label {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: rgba(255, 255, 255, 0.9);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+/* ================================================
+   GLASS INPUTS
+   ================================================ */
+
+.glass-input {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-lg);
+  transition: all var(--transition-base);
+  overflow: hidden;
+}
+
+.glass-input::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(0, 198, 230, 0.1),
+    transparent
+  );
+  transition: left 0.5s;
+}
+
+.glass-input:focus-within {
+  border-color: rgba(0, 198, 230, 0.5);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 
+    0 0 0 3px rgba(0, 198, 230, 0.1),
+    0 4px 16px rgba(0, 198, 230, 0.2);
+}
+
+.glass-input:focus-within::before {
+  left: 100%;
+}
+
+.input-icon {
+  position: absolute;
+  left: var(--spacing-4);
+  color: rgba(255, 255, 255, 0.5);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.glass-input .input {
+  flex: 1;
+  padding: var(--spacing-3) var(--spacing-4) var(--spacing-3) calc(var(--spacing-4) + 20px + var(--spacing-3));
+  background: transparent;
+  border: none;
+  color: var(--text-light);
+  font-size: 1rem;
+  outline: none;
+}
+
+.glass-input .input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.password-toggle {
+  position: absolute;
+  right: var(--spacing-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.5);
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  z-index: 1;
+}
+
+.password-toggle:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* ================================================
+   FORM OPTIONS
+   ================================================ */
+
+.form-options {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.875rem;
+}
+
+.checkbox-wrapper {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  user-select: none;
+}
+
+.checkbox-wrapper input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: var(--color-accent);
+}
+
+.forgot-link {
+  color: var(--color-accent);
+  text-decoration: none;
+  font-weight: 500;
+  transition: all var(--transition-fast);
+}
+
+.forgot-link:hover {
+  text-decoration: underline;
+  color: #00B0CC;
+}
+
+/* ================================================
+   GLASS BUTTON
+   ================================================ */
+
+.btn-glass {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(135deg, rgba(0, 198, 230, 0.8) 0%, rgba(0, 176, 204, 0.9) 100%);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(0, 198, 230, 0.3);
+  box-shadow: 
+    0 4px 16px rgba(0, 198, 230, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.btn-glass::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  transform: translate(-50%, -50%);
+  transition: width 0.6s, height 0.6s;
+}
+
+.btn-glass:hover::after {
+  width: 300px;
+  height: 300px;
+}
+
+.btn-glass span {
+  position: relative;
+  z-index: 1;
+}
+
+.btn-glow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.3),
+    transparent
+  );
+  transform: translateX(-100%);
+  animation: shimmer 3s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* ================================================
+   FORM FOOTER
+   ================================================ */
+
+.form-footer {
+  text-align: center;
+  padding-top: var(--spacing-2);
+}
+
+.form-footer p {
+  font-size: 0.875rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.form-link {
+  color: var(--color-accent);
+  font-weight: 600;
+  text-decoration: none;
+  transition: all var(--transition-fast);
+}
+
+.form-link:hover {
+  text-decoration: underline;
+  color: #00B0CC;
+}
+
+/* ================================================
+   FEATURES SECTION
+   ================================================ */
+
+.login-features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--spacing-3);
+  padding-top: var(--spacing-4);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.feature-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.875rem;
+}
+
+.feature-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  box-shadow: 0 0 8px rgba(0, 198, 230, 0.6);
+}
+
+/* ================================================
+   CONNECTION STATUS
+   ================================================ */
+
+.connection-status {
+  position: fixed;
+  bottom: var(--spacing-4);
+  right: var(--spacing-4);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  padding: var(--spacing-2) var(--spacing-4);
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-full);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.75rem;
+  z-index: 10;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--status-success);
+  box-shadow: 0 0 8px var(--status-success);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@media (max-height: 820px) {
+  .login-glass-container {
+    padding: var(--spacing-5) var(--spacing-4);
+  }
+
+  .login-logo-section {
+    margin-bottom: var(--spacing-4);
+  }
+
+  .login-form-section {
+    margin-bottom: var(--spacing-3);
+  }
+
+  .login-form {
+    gap: var(--spacing-3);
+  }
+
+  .login-features {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: var(--spacing-2);
+    padding-top: var(--spacing-3);
+  }
+}
+
+/* ================================================
+   RESPONSIVE
+   ================================================ */
+
+@media (max-width: 768px) {
+  .login-page {
+    padding: 0;
+  }
+
+  .login-glass-container {
+    max-width: 100%;
+    min-height: 100vh;
+    border-radius: 0;
+    border: none;
+    padding: var(--spacing-6) var(--spacing-4);
+  }
+
+  .logo-title {
+    font-size: 2rem;
+  }
+
+  .form-header h2 {
+    font-size: 1.5rem;
+  }
+
+  .form-options {
+    flex-direction: column;
+    gap: var(--spacing-3);
+    align-items: flex-start;
+  }
+
+  .connection-status {
+    bottom: var(--spacing-2);
+    right: var(--spacing-2);
+    font-size: 0.6875rem;
+  }
+}
+
+@keyframes shake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-10px);
+  }
+  75% {
+    transform: translateX(10px);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

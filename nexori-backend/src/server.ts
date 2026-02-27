@@ -1,4 +1,4 @@
-import 'reflect-metadata'; // Añadir al inicio
+import 'reflect-metadata';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -6,14 +6,17 @@ import morgan from 'morgan';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import { createServer } from 'http';
-import { Server } from 'socket.io';
-import os from 'os'; // ← AÑADIDO: Para obtener IPs de red
+import os from 'os';
+import path from 'path';
 
 // Configurar variables de entorno
 dotenv.config();
 
-// Importar configuración de base de datos (PostgreSQL)
+// Importar configuración de base de datos
 import { connectDB } from './config/database';
+
+// 🔥 IMPORTAR SOCKET MANAGER
+import { socketManager } from './config/socket.manager';
 
 // Importar rutas
 import authRoutes from './routes/auth.routes';
@@ -21,15 +24,17 @@ import userRoutes from './routes/user.routes';
 import bikeRoutes from './routes/bike.routes';
 import panicRoutes from './routes/panic.routes';
 import minuteRoutes from './routes/minute.routes';
-
-// Importar WebSocket service
-import { setupWebSocket } from './sockets/webSocket';
-import path from 'path'; // ← CORREGIDO: Quitar /win32
-
+import ticketRoutes from './routes/ticket.routes';
+import adminRoutes from './routes/admin.routes';
+import webhookRoutes from './routes/webhook.routes';
+import { whatsappService } from './services/whatsapp.service';
 const app = express();
 const httpServer = createServer(app);
 
-// Obtener IPs de red disponibles
+// 🔥 INICIALIZAR SOCKET MANAGER
+socketManager.initialize(httpServer);
+
+// Obtener IPs de red
 const getNetworkIPs = (): string[] => {
   const interfaces = os.networkInterfaces();
   const ips: string[] = ['localhost'];
@@ -48,25 +53,10 @@ const getNetworkIPs = (): string[] => {
 const networkIPs = getNetworkIPs();
 const mainIP = networkIPs.find(ip => ip.startsWith('192.168.')) || networkIPs[1] || 'localhost';
 
-// Configurar Socket.IO con CORS mejorado
-const io = new Server(httpServer, {
-  cors: {
-    origin: (origin, callback) => {
-      // Permitir conexiones sin origin (mobile apps) y desde cualquier IP de la red local
-      if (!origin || origin.includes('192.168.') || origin.includes('localhost')) {
-        return callback(null, true);
-      }
-      callback(new Error('Not allowed by CORS'));
-    },
-    credentials: true,
-  },
-  transports: ['websocket', 'polling'],
-});
-
 // Configurar rate limiting
 const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'),
-  max: parseInt(process.env.RATE_LIMIT_MAX || '100'),
+  max: parseInt(process.env.RATE_LIMIT_MAX || '1000'),
   message: 'Demasiadas peticiones desde esta IP, por favor intenta más tarde',
   standardHeaders: true,
   legacyHeaders: false,
@@ -76,27 +66,12 @@ const limiter = rateLimit({
 app.use(helmet());
 app.use(cors({
   origin: (origin, callback) => {
-    // Permitir:
-    // 1. Requests sin origin (mobile apps, postman, curl)
-    // 2. Cualquier IP local (192.168.x.x, 10.x.x.x, 172.x.x.x)
-    // 3. localhost
-    // 4. Expo URLs
-    
-    if (!origin) {
+    if (!origin || process.env.NODE_ENV === 'development') {
       return callback(null, true);
     }
     
-    const allowedPatterns = [
-      /^http:\/\/localhost(:\d+)?$/,
-      /^http:\/\/192\.168\.\d+\.\d+(:\d+)?$/,
-      /^http:\/\/10\.\d+\.\d+\.\d+(:\d+)?$/,
-      /^http:\/\/172\.\d+\.\d+\.\d+(:\d+)?$/,
-      /^exp:\/\/.*$/,
-    ];
-    
-    const isAllowed = allowedPatterns.some(pattern => pattern.test(origin));
-    
-    if (isAllowed) {
+    const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || [];
+    if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
       console.warn(`🔒 CORS bloqueado para origen: ${origin}`);
@@ -108,16 +83,25 @@ app.use(cors({
   credentials: true,
   exposedHeaders: ['Authorization', 'X-Total-Count']
 }));
-app.use(morgan('dev'));
-app.use(express.json());
+app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+app.use(express.json({
+  // Captura el cuerpo crudo para validar la firma HMAC-SHA256 del webhook de Meta
+  verify: (req: any, _res, buf) => { req.rawBody = buf; },
+}));
 app.use(express.urlencoded({ extended: true }));
 app.use('/api', limiter);
 
 // Conectar a PostgreSQL
 connectDB();
 
-// Configurar WebSocket
-setupWebSocket(io);
+// 🔥 LOS SERVICIOS YA ESTÁN CONFIGURADOS CON SOCKET MANAGER
+console.log('✅ Servicios configurados con SocketManager:');
+console.log('   - MinuteService');
+console.log('   - BikeService');
+console.log('   - PanicService');
+
+// Webhook de WhatsApp/Meta — fuera de /api y sin autenticación
+app.use('/webhook', webhookRoutes);
 
 // Rutas
 app.use('/api/auth', authRoutes);
@@ -125,8 +109,10 @@ app.use('/api/users', userRoutes);
 app.use('/api/bikes', bikeRoutes);
 app.use('/api/panic', panicRoutes);
 app.use('/api/minutes', minuteRoutes);
+app.use('/api/tickets', ticketRoutes);
+app.use('/api/admin', adminRoutes);
 
-// Ruta de salud MEJORADA
+// Ruta de salud
 app.get('/api/health', (req, res) => {
   res.status(200).json({
     status: 'success',
@@ -135,6 +121,11 @@ app.get('/api/health', (req, res) => {
     version: '1.0.0',
     database: 'PostgreSQL',
     environment: process.env.NODE_ENV,
+    websocket: {
+      connected: socketManager.getStats().totalConnected,
+      status: 'active'
+    },
+    whatsapp: whatsappService.getStatus(),
     accessibleFrom: {
       localhost: `http://localhost:${process.env.PORT || 3000}/api`,
       network: `http://${mainIP}:${process.env.PORT || 3000}/api`,
@@ -143,10 +134,15 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Servir archivos estáticos desde la carpeta uploads
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// 🔧 SERVIR ARCHIVOS ESTÁTICOS
+// process.cwd() siempre apunta a la raíz del proyecto, tanto en dev como en producción
+const uploadsPath = path.join(process.cwd(), 'uploads');
 
-// Ruta para test de conexión simple (sin auth)
+app.use('/uploads', express.static(uploadsPath));
+
+console.log('📁 Sirviendo archivos estáticos desde:', uploadsPath);
+
+// Ruta de ping
 app.get('/api/ping', (req, res) => {
   res.status(200).json({
     success: true,
@@ -168,7 +164,10 @@ app.use('*', (req, res) => {
       '/api/users/*',
       '/api/bikes/*',
       '/api/panic/*',
-      '/api/minutes/*'
+      '/api/minutes/*',
+      '/api/tickets/*',
+      '/uploads/*',
+      '/webhook'
     ]
   });
 });
@@ -195,16 +194,16 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 
 const PORT = process.env.PORT || 3000;
 
-// FORMA CORRECTA: Usar parámetros en el orden correcto
 httpServer.listen({
   port: PORT,
-  host: '0.0.0.0'  // ← Forma explícita con objeto
+  host: '0.0.0.0'
 }, () => {
-  console.log(`🚀 Servidor corriendo:`);
-  console.log(`   🔌 Puerto: ${PORT}`);
-  console.log(`   🌐 Host: 0.0.0.0 (escucha en todas las interfaces)`);
+  console.log('\n=================================');
+  console.log('🚀 SERVIDOR NEXORI INICIADO');
+  console.log('=================================');
+  console.log(`🔌 Puerto: ${PORT}`);
+  console.log(`🌐 Host: 0.0.0.0 (todas las interfaces)`);
   
-  // Obtener IPs de red para mostrar
   const interfaces = os.networkInterfaces();
   const networkIPs: string[] = [];
   
@@ -218,7 +217,7 @@ httpServer.listen({
   
   const mainIP = networkIPs.find(ip => ip.startsWith('192.168.')) || networkIPs[0] || 'localhost';
   
-  console.log(`\n📡 URLs de acceso:`);
+  console.log('\n📡 URLs de acceso:');
   console.log(`   💻 Local:     http://localhost:${PORT}/api/health`);
   console.log(`   📱 Móvil:     http://${mainIP}:${PORT}/api/health`);
   
@@ -229,11 +228,18 @@ httpServer.listen({
     });
   }
   
-  console.log(`\n🗄️  Base de datos: PostgreSQL`);
-  console.log(`🔌 WebSocket disponible en puerto ${PORT}`);
+  console.log(`\n🗄️ Base de datos: PostgreSQL`);
+  console.log(`🔌 WebSocket Manager activo en puerto ${PORT}`);
   console.log(`📁 Archivos estáticos: http://localhost:${PORT}/uploads/`);
-  console.log(`\n⚠️  IMPORTANTE para conexión móvil:`);
-  console.log(`   1. Teléfono y PC deben estar en la MISMA red WiFi`);
-  console.log(`   2. Usa la IP que comienza con 192.168.x.x`);
-  console.log(`   3. URL en móvil: http://${mainIP}:${PORT}/api/health`);
+  console.log(`   📂 Ruta del sistema: ${uploadsPath}`);
+  console.log(`✅ Servicios con WebSocket en tiempo real:`);
+  console.log(`   - MinuteService (minutas)`);
+  console.log(`   - BikeService (bicicletas)`);
+  console.log(`   - PanicService (alertas de pánico)`);
+  console.log('\n=================================\n');
+
+  // Validar token de WhatsApp en background (sin bloquear el arranque)
+  whatsappService.validateToken().catch(() => {
+    // El método ya imprime los errores internamente
+  });
 });

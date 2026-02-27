@@ -1,4 +1,4 @@
-export type UserRole = 'admin' | 'coordinator' | 'supervisor' | 'operator' | 'guard';
+export type UserRole = 'admin' | 'coordinator' | 'supervisor' | 'operator' | 'guard' | 'locatario';
 
 export interface JwtPayload {
   userId: string;
@@ -28,7 +28,6 @@ export interface PaginationParams {
 
 export interface FilterParams {
   status?: string;
-  priority?: string;
   startDate?: Date;
   endDate?: Date;
 }

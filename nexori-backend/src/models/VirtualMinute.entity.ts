@@ -31,11 +31,18 @@ export class VirtualMinute {
 
   @Column({
     type: 'enum',
-    enum: ['incident', 'novelty', 'observation'],
-    default: 'incident',
+    enum: ['anotacion', 'hurto', 'novedad_vehiculo', 'objetos_abandonados',
+           'novedad', 'observacion', 'recomendacion', 'nueva_marca', 'incidente',
+           'emergencia', 'mantenimiento', 'persona_sospechosa'],
+    default: 'novedad',
   })
-  @IsEnum(['incident', 'novelty', 'observation'], { message: 'Tipo inválido' })
-  type: 'incident' | 'novelty' | 'observation';
+  @IsEnum(['anotacion', 'hurto', 'novedad_vehiculo', 'objetos_abandonados',
+           'novedad', 'observacion', 'recomendacion', 'nueva_marca', 'incidente',
+           'emergencia', 'mantenimiento', 'persona_sospechosa'],
+    { message: 'Tipo inválido' })
+  type: 'anotacion' | 'hurto' | 'novedad_vehiculo' | 'objetos_abandonados' |
+        'novedad' | 'observacion' | 'recomendacion' | 'nueva_marca' | 'incidente' |
+        'emergencia' | 'mantenimiento' | 'persona_sospechosa';
 
   @Column()
   @IsNotEmpty({ message: 'Reportado por es requerido' })
@@ -51,13 +58,13 @@ export class VirtualMinute {
 
   @Column({
     type: 'enum',
-    enum: ['pending', 'in_progress', 'resolved', 'closed'],
+    enum: ['pending', 'reviewed', 'closed'],
     default: 'pending',
   })
-  @IsEnum(['pending', 'in_progress', 'resolved', 'closed'], {
+  @IsEnum(['pending', 'reviewed', 'closed'], {
     message: 'Estado inválido',
   })
-  status: 'pending' | 'in_progress' | 'resolved' | 'closed';
+  status: 'pending' | 'reviewed' | 'closed';
 
   @Column({
     type: 'enum',

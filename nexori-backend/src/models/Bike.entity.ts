@@ -1,3 +1,4 @@
+// src/models/Bike.entity.ts
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -12,16 +13,16 @@ import { IsNotEmpty, IsEnum, IsOptional } from 'class-validator';
 import { User } from './User.entity';
 
 @Entity('bikes')
-@Index(['code'], { unique: true })
+@Index(['serialNumber'], { unique: true })
 @Index(['status'])
-@Index(['ownerId'])
+@Index(['ownerDocument'])
 export class Bike {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
   @Column({ unique: true })
-  @IsNotEmpty({ message: 'Código es requerido' })
-  code: string;
+  @IsNotEmpty({ message: 'Número de serie es requerido' })
+  serialNumber: string;
 
   @Column()
   @IsNotEmpty({ message: 'Marca es requerida' })
@@ -40,16 +41,25 @@ export class Bike {
   ownerName: string;
 
   @Column()
-  @IsNotEmpty({ message: 'ID del propietario es requerido' })
-  ownerId: string;
+  @IsNotEmpty({ message: 'Documento del propietario es requerido' })
+  ownerDocument: string;
+
+  // 🆕 CAMPO NUEVO - Teléfono del propietario para enviar WhatsApp
+  @Column({ nullable: true })
+  @IsOptional()
+  ownerPhone: string;
+
+  @Column({ nullable: true })
+  @IsOptional()
+  location: string;
 
   @Column({
     type: 'enum',
-    enum: ['in', 'out', 'maintenance'],
-    default: 'in',
+    enum: ['inside', 'outside', 'maintenance'],
+    default: 'inside',
   })
-  @IsEnum(['in', 'out', 'maintenance'], { message: 'Estado inválido' })
-  status: 'in' | 'out' | 'maintenance';
+  @IsEnum(['inside', 'outside', 'maintenance'], { message: 'Estado inválido' })
+  status: 'inside' | 'outside' | 'maintenance';
 
   @Column({ type: 'timestamp', nullable: true })
   lastCheckIn: Date;
@@ -66,6 +76,10 @@ export class Bike {
   @Column({ type: 'text', nullable: true })
   @IsOptional()
   notes: string;
+
+  @Column({ nullable: true })
+  @IsOptional()
+  qrCode: string;
 
   @ManyToOne(() => User, { nullable: true })
   @JoinColumn({ name: 'registered_by' })

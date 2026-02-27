@@ -1,8 +1,8 @@
 import express from 'express';
 import { MinuteController } from '../controllers/minute.controller';
 import { authenticate } from '../middleware/auth.middleware';
-// Importar la configuración mejorada de multer
-import { minuteUpload } from '../config/multer.config';
+// 🆕 Importar el nuevo middleware para imágenes
+import { minuteImageUpload, minuteUpload } from '../config/multer.config';
 
 const router = express.Router();
 
@@ -24,14 +24,21 @@ router.post('/', MinuteController.create);
 // PUT /api/minutes/:id - Actualizar minuta
 router.put('/:id', MinuteController.update);
 
+// PUT /api/minutes/:id/status - Actualizar solo el estado de la minuta
+router.put('/:id/status', MinuteController.update);
+
 // DELETE /api/minutes/:id - Eliminar minuta
 router.delete('/:id', MinuteController.delete);
 
 // POST /api/minutes/:id/assign - Asignar minuta
 router.post('/:id/assign', MinuteController.assign);
 
-// POST /api/minutes/:id/attachments - Subir archivo adjunto
-// Usamos minuteUpload que incluye validaciones de tipo y tamaño
+// 🆕 POST /api/minutes/:id/images - Subir IMAGEN (solo para móvil)
+// Usa minuteImageUpload que solo acepta imágenes y las comprime
+router.post('/:id/images', minuteImageUpload, MinuteController.uploadAttachment);
+
+// POST /api/minutes/:id/attachments - Subir ARCHIVO (mantener para compatibilidad)
+// Usa minuteUpload original que acepta múltiples tipos de archivo
 router.post('/:id/attachments', minuteUpload, MinuteController.uploadAttachment);
 
 // DELETE /api/minutes/:id/attachments/:attachmentIndex - Eliminar archivo adjunto

@@ -17,6 +17,6 @@
     "types": ["node"],
     "strictPropertyInitialization": false  // AÑADIR ESTA LÍNEA
   },
-  "include": ["src/**/*", "../nexori-mobile/src/services/bike.service.ts"],
+  "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
 }

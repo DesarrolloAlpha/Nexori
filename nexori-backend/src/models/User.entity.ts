@@ -31,12 +31,18 @@ export class User {
   @IsNotEmpty({ message: 'Nombre es requerido' })
   name: string;
 
+  @Column({ nullable: true })
+  localName: string;
+
+  @Column({ nullable: true })
+  adminName: string;
+
   @Column({
     type: 'enum',
-    enum: ['admin', 'coordinator', 'supervisor', 'operator', 'guard'],
+    enum: ['admin', 'coordinator', 'supervisor', 'operator', 'guard', 'locatario'],
     default: 'guard',
   })
-  @IsEnum(['admin', 'coordinator', 'supervisor', 'operator', 'guard'], {
+  @IsEnum(['admin', 'coordinator', 'supervisor', 'operator', 'guard', 'locatario'], {
     message: 'Rol inválido',
   })
   role: UserRole;
