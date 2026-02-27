@@ -28,7 +28,6 @@ services:
   - type: web
     name: nexori-api
     runtime: node
-    plan: free
     region: oregon
     rootDir: nexori-backend
     buildCommand: npm install && npm run build
