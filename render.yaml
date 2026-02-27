@@ -129,7 +129,6 @@ services:
     name: nexori-web
     runtime: static
     plan: free
-    region: oregon
     rootDir: nexori-web
     buildCommand: npm install && npm run build
     staticPublishPath: ./dist
