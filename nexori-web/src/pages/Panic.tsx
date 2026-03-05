@@ -108,7 +108,7 @@ const Panic: React.FC = () => {
   // ✅ CAMBIO 6: Usar createPanic del hook
   const handleCreatePanic = async () => {
     try {
-      const result = await createPanic('high');
+      const result = await createPanic();
       if (result) {
         success('🚨 Alerta de pánico enviada');
       }

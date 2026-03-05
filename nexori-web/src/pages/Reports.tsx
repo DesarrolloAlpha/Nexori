@@ -341,7 +341,7 @@ const Reports: React.FC = () => {
 
   const panicInsight = panicReport.total === 0
     ? `No se registraron alertas de pánico durante ${periodLabel}.`
-    : `Se activaron ${panicReport.total} alertas de pánico durante ${periodLabel}. ${panicReport.resolved} fueron resueltas (${Math.round((panicReport.resolved / panicReport.total) * 100)}%)${panicReport.avgResp > 0 ? ` con un tiempo promedio de respuesta de ${panicReport.avgResp} min` : ''}${panicReport.high > 0 ? `. Se atendieron ${panicReport.high} alertas de alta prioridad` : ''}.`;
+    : `Se activaron ${panicReport.total} alertas de pánico durante ${periodLabel}. ${panicReport.resolved} fueron resueltas (${Math.round((panicReport.resolved / panicReport.total) * 100)}%)${panicReport.avgResp > 0 ? ` con un tiempo promedio de respuesta de ${panicReport.avgResp} min` : ''}.`;
 
   const minuteInsight = minuteReport.total === 0
     ? `No se crearon minutas durante ${periodLabel}.`
