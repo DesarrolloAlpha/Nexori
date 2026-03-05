@@ -12,6 +12,48 @@ import path from 'path';
 // Configurar variables de entorno
 dotenv.config();
 
+// ── Validación de configuración para producción ──────────────────────────────
+(function validateProductionConfig() {
+  if (process.env.NODE_ENV !== 'production') return;
+
+  const required = [
+    'JWT_SECRET',
+    'JWT_REFRESH_SECRET',
+    'DB_PASSWORD',
+    'WHATSAPP_PHONE_NUMBER_ID',
+    'WHATSAPP_ACCESS_TOKEN',
+    'WHATSAPP_WEBHOOK_VERIFY_TOKEN',
+    'WHATSAPP_APP_SECRET',
+    'WHATSAPP_TEMPLATE_NAME',
+    'WHATSAPP_TEMPLATE_LANG',
+    'ADMIN_DEFAULT_PASSWORD',
+  ];
+
+  const missing = required.filter(k => !process.env[k]?.trim());
+  if (missing.length > 0) {
+    console.error('❌  CONFIGURACIÓN INCOMPLETA PARA PRODUCCIÓN:');
+    missing.forEach(k => console.error(`   - ${k} no definida o vacía`));
+    process.exit(1);
+  }
+
+  // Detectar valores de desarrollo no cambiados
+  const devDefaults: Record<string, string> = {
+    JWT_SECRET:         'tu_super_secreto_jwt_aqui_cambiar_en_produccion',
+    JWT_REFRESH_SECRET: 'tu_refresh_secreto_aqui_cambiar_en_produccion',
+  };
+  const unchanged = Object.entries(devDefaults)
+    .filter(([k, v]) => process.env[k] === v)
+    .map(([k]) => k);
+
+  if (unchanged.length > 0) {
+    console.error('❌  Variables con valores de DESARROLLO detectadas en producción:');
+    unchanged.forEach(k => console.error(`   - ${k}`));
+    process.exit(1);
+  }
+
+  console.log('✅ Configuración de producción validada.');
+})();
+
 // Importar configuración de base de datos
 import { connectDB } from './config/database';
 

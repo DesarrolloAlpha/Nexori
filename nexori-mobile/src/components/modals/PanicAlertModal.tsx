@@ -107,7 +107,7 @@ export default function PanicAlertModal({
   };
 
   const statusConfig = getStatusConfig(panicAlert.status);
-  const priorityConfig = getPriorityConfig(panicAlert.priority);
+  const priorityConfig = getPriorityConfig(panicAlert.priority ?? 'medium');
 
   const formatTime = (dateString: string) => {
     const date = new Date(dateString);

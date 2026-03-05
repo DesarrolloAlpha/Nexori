@@ -9,6 +9,7 @@ import {
   checkInBike,
   checkOutBike,
   getBikeHistory,
+  resendWhatsApp,
 } from '../controllers/bike.controller';
 
 const authorize = (...roles: string[]) => {
@@ -46,5 +47,8 @@ router.delete('/:id', authorize('admin'), deleteBike);
 // Operaciones de ingreso/salida
 router.post('/:id/check-in', authorize('admin', 'coordinator', 'operator', 'guard'), checkInBike);
 router.post('/:id/check-out', authorize('admin', 'coordinator', 'operator', 'guard'), checkOutBike);
+
+// Reenviar QR por WhatsApp al teléfono registrado de la bicicleta
+router.post('/:id/resend-whatsapp', authorize('admin', 'coordinator', 'operator'), resendWhatsApp);
 
 export default router;

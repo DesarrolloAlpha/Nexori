@@ -1,13 +1,12 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
+import { AppDataSource } from '../config/database';
+import { WhatsAppMessageStatus } from '../models/WhatsAppMessageStatus.entity';
 
 const router = Router();
 
-/**
- * GET /webhook
- * Meta llama este endpoint al configurar el webhook en el dashboard.
- * Responde con el challenge si el verify_token coincide.
- */
+// ── GET /webhook — verificación de Meta ─────────────────────────────────────
+
 router.get('/', (req: Request, res: Response) => {
   const verifyToken = process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN;
 
@@ -21,18 +20,16 @@ router.get('/', (req: Request, res: Response) => {
     return;
   }
 
-  console.warn('⚠️  WhatsApp webhook: token de verificación incorrecto (esperado vs recibido)');
+  console.warn('⚠️  WhatsApp webhook: token de verificación incorrecto');
   res.sendStatus(403);
 });
 
-/**
- * POST /webhook
- * Meta envía eventos aquí: mensajes entrantes, estados de entrega, etc.
- * Si WHATSAPP_APP_SECRET está configurado, se valida la firma HMAC-SHA256.
- */
+// ── POST /webhook — eventos entrantes de Meta ────────────────────────────────
+
 router.post('/', (req: Request, res: Response) => {
   const appSecret = process.env.WHATSAPP_APP_SECRET;
 
+  // Validación HMAC-SHA256 (obligatoria en producción si WHATSAPP_APP_SECRET está definido)
   if (appSecret) {
     const signature = req.headers['x-hub-signature-256'] as string | undefined;
     const rawBody   = (req as any).rawBody as Buffer | undefined;
@@ -59,37 +56,44 @@ router.post('/', (req: Request, res: Response) => {
     }
 
     if (!signaturesMatch) {
-      console.warn('⚠️  Webhook POST: firma inválida — rechazado');
+      console.warn('⚠️  Webhook POST: firma HMAC inválida — rechazado');
       res.sendStatus(403);
       return;
     }
   }
 
-  // Meta siempre debe recibir 200 rápidamente, aunque el procesamiento falle
+  // Meta SIEMPRE debe recibir 200 rápidamente (< 20 s), antes de cualquier procesamiento
   res.sendStatus(200);
 
   const body = req.body;
-
   if (body?.object !== 'whatsapp_business_account') return;
+
+  // Hash del payload completo para auditoría — se almacena en cada registro de status
+  const rawEventHash = crypto
+    .createHash('sha256')
+    .update(JSON.stringify(body))
+    .digest('hex');
 
   body.entry?.forEach((entry: any) => {
     entry.changes?.forEach((change: any) => {
       const value = change.value;
 
-      // Mensajes entrantes
+      // Mensajes entrantes (texto, imagen, audio, etc.)
       value.messages?.forEach((message: any) => {
         handleIncomingMessage(message, value.metadata);
       });
 
-      // Estados de entrega / lectura
+      // Cambios de estado de mensajes enviados (sent, delivered, read, failed)
       value.statuses?.forEach((status: any) => {
-        handleMessageStatus(status);
+        persistMessageStatus(status, rawEventHash).catch(err =>
+          console.error('❌ Error persistiendo status WhatsApp:', err?.message ?? err)
+        );
       });
     });
   });
 });
 
-// ── Handlers internos ──────────────────────────────────────────────────────
+// ── Handlers internos ────────────────────────────────────────────────────────
 
 function handleIncomingMessage(message: any, _metadata: any): void {
   const from = message.from;
@@ -100,14 +104,54 @@ function handleIncomingMessage(message: any, _metadata: any): void {
   } else {
     console.log(`📨 WhatsApp de ${from} (tipo: ${type})`);
   }
-
   // Aquí se puede extender: guardar en DB, responder automáticamente, etc.
 }
 
-function handleMessageStatus(status: any): void {
-  // Estados posibles: sent | delivered | read | failed
-  const emoji = status.status === 'read' ? '👁️' : status.status === 'delivered' ? '✅' : status.status === 'failed' ? '❌' : '📤';
-  console.log(`${emoji} Mensaje ${status.id}: ${status.status}`);
+/**
+ * Persiste un evento de status de mensaje en la BD.
+ *
+ * Idempotencia: la restricción única (messageId, status) en la tabla asegura que
+ * si Meta reenvía el mismo evento, el INSERT falla con código 23505 (unique_violation)
+ * y se ignora silenciosamente — sin generar duplicados ni errores visibles.
+ */
+async function persistMessageStatus(status: any, rawEventHash: string): Promise<void> {
+  const statusEmoji: Record<string, string> = {
+    sent:      '📤',
+    delivered: '✅',
+    read:      '👁️',
+    failed:    '❌',
+    warning:   '⚠️',
+  };
+  const emoji = statusEmoji[status.status as string] ?? '📡';
+  console.log(`${emoji} wamid ${status.id}: ${status.status} (ts: ${status.timestamp})`);
+
+  if (!AppDataSource.isInitialized) {
+    console.warn('⚠️  BD no inicializada — status no persistido');
+    return;
+  }
+
+  const repo   = AppDataSource.getRepository(WhatsAppMessageStatus);
+  const record = repo.create({
+    messageId:       status.id,
+    status:          status.status,
+    statusTimestamp: status.timestamp,
+    recipientId:     status.recipient_id ?? null,
+    errorCode:       status.errors?.[0]?.code  ?? null,
+    errorTitle:      status.errors?.[0]?.title ?? null,
+    rawEventHash,
+  });
+
+  try {
+    await repo.save(record);
+    console.log(`💾 Status "${status.status}" guardado — wamid: ${status.id}`);
+  } catch (err: any) {
+    if (err?.code === '23505') {
+      // Evento duplicado — Meta lo reenvía con frecuencia, es normal
+      console.debug(`ℹ️  Status duplicado ignorado: ${status.id} / ${status.status}`);
+    } else {
+      throw err;
+    }
+  }
 }
 
 export default router;

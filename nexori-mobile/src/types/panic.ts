@@ -1,4 +1,5 @@
 export type PanicStatus = 'active' | 'attended' | 'resolved';
+export type PanicPriority = 'low' | 'medium' | 'high' | 'critical';
 
 export interface PanicEvent {
   id: string;
@@ -8,6 +9,7 @@ export interface PanicEvent {
   adminName?: string;
   localNumber?: string;
   status: PanicStatus;
+  priority?: PanicPriority;
   timestamp: string;
   attendedBy?: string;
   attendedAt?: string;

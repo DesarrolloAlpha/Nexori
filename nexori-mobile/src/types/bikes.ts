@@ -2,20 +2,24 @@ export type BikeStatus = 'inside' | 'outside';
 
 export interface Bike {
   id: string;
-  qrCode: string; // ← El código QR único
+  qrCode?: string;
   serialNumber: string;
   brand: string;
   model: string;
   color: string;
   ownerName: string;
   ownerDocument: string;
+  ownerPhone?: string;
   location: string;
   status: BikeStatus;
+  notes?: string;
   photoUri?: string;
   lastCheckIn?: string;
-  lastCheckOut?: string; 
+  lastCheckOut?: string;
   entryDate?: string;
-  exitDate?: string; // ← Foto de la bicicleta (opcional)
+  exitDate?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface BikeHistoryEntry {

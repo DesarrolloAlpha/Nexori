@@ -369,11 +369,11 @@ export default function UsersScreen() {
   const inputStyle = [
     tw('rounded-xl px-4 py-3 mb-1 text-sm'),
     { backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border.light, color: colors.primary },
-  ] as const;
+  ];
   const labelStyle = [
     tw('text-xs font-bold mb-1.5 uppercase tracking-wide'),
     { color: colors.text.secondary },
-  ] as const;
+  ];
 
   if (loading) {
     return (

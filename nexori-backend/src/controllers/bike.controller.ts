@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import { bikeService } from '../services/bike.service';
+import { whatsappService } from '../services/whatsapp.service';
+import { qrCodeService } from '../services/qrcode.service';
 import { ApiResponse } from '../types';
 
 export const createBike = async (req: Request, res: Response): Promise<void> => {
@@ -210,6 +212,48 @@ export const checkOutBike = async (req: Request, res: Response): Promise<void> =
     res.status(error.message.includes('no encontrada') ? 404 : 
              error.message.includes('ya está retirada') ? 400 : 
              error.message.includes('mantenimiento') ? 400 : 500).json(response);
+  }
+};
+
+export const resendWhatsApp = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const bike = await bikeService.getBikeById(id);
+
+    if (!(bike as any).ownerPhone) {
+      res.status(400).json({
+        success: false,
+        message: 'Esta bicicleta no tiene número de teléfono registrado.',
+      });
+      return;
+    }
+
+    const qrUrl = qrCodeService.generatePublicQRUrl(bike.qrCode);
+    const sent  = await whatsappService.sendBikeQRCode(
+      (bike as any).ownerPhone,
+      qrUrl,
+      {
+        serialNumber: bike.serialNumber,
+        brand:        bike.brand,
+        model:        bike.model,
+        ownerName:    bike.ownerName,
+        qrCode:       bike.qrCode,
+      }
+    );
+
+    const response: ApiResponse = {
+      success: sent,
+      message: sent
+        ? `QR reenviado a ${(bike as any).ownerPhone}`
+        : 'No se pudo reenviar el QR — revisa la configuración de WhatsApp en el servidor.',
+    };
+    res.status(sent ? 200 : 500).json(response);
+  } catch (error: any) {
+    const response: ApiResponse = {
+      success: false,
+      message: error.message || 'Error al reenviar QR por WhatsApp',
+    };
+    res.status(error.message?.includes('no encontrada') ? 404 : 500).json(response);
   }
 };
 

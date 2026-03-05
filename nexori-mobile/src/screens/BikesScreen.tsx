@@ -840,6 +840,10 @@ export default function BikesScreen() {
           }}
           onCheckIn={handleCheckIn}
           onCheckOut={handleCheckOut}
+          onUpdate={(updatedBike) => {
+            setSelectedBike(updatedBike as any);
+            setBikes(prev => prev.map(b => b.id === updatedBike.id ? { ...b, ...updatedBike } as any : b));
+          }}
         />
       </>
     </AnimatedTabScreen>

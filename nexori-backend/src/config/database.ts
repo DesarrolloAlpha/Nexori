@@ -7,6 +7,7 @@ import { Bike } from '../models/Bike.entity';
 import { PanicEvent } from '../models/PanicEvent.entity';
 import { VirtualMinute } from '../models/VirtualMinute.entity';
 import { Ticket, TicketComment } from '../models/Ticket.entity';
+import { WhatsAppMessageStatus } from '../models/WhatsAppMessageStatus.entity';
 
 dotenv.config();
 
@@ -17,9 +18,8 @@ export const AppDataSource = new DataSource({
   username: process.env.DB_USERNAME || 'postgres',
   password: process.env.DB_PASSWORD,
   database: process.env.DB_DATABASE || 'nexori_db',
-  
-  // Entidades - AGREGAR Ticket y TicketComment
-  entities: [User, Bike, PanicEvent, VirtualMinute, Ticket, TicketComment],
+
+  entities: [User, Bike, PanicEvent, VirtualMinute, Ticket, TicketComment, WhatsAppMessageStatus],
   
   // Sincronización (solo en desarrollo)
   synchronize: process.env.TYPEORM_SYNCHRONIZE === 'true',

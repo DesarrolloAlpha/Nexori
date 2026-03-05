@@ -152,13 +152,8 @@ export class BikeService {
       // 🔥 ENVIAR CÓDIGO QR POR WHATSAPP SI HAY TELÉFONO
       if (ownerPhone && qrImageUrlForWhatsApp && whatsappService.isConfigured()) {
         try {
-          // En desarrollo, enviar al número de prueba configurado
-          const phoneToSend = process.env.NODE_ENV === 'development' 
-            ? (process.env.WHATSAPP_TEST_NUMBER || ownerPhone)
-            : ownerPhone;
-
           const whatsappSent = await whatsappService.sendBikeQRCode(
-            phoneToSend,
+            ownerPhone,
             qrImageUrlForWhatsApp, // ✅ Ya verificamos que no es null arriba
             {
               serialNumber: bike.serialNumber,
@@ -170,9 +165,9 @@ export class BikeService {
           );
 
           if (whatsappSent) {
-            console.log(`✅ QR Code enviado por WhatsApp a ${phoneToSend}`);
+            console.log(`✅ QR Code enviado por WhatsApp a ${ownerPhone}`);
           } else {
-            console.warn(`⚠️ No se pudo enviar QR por WhatsApp a ${phoneToSend}`);
+            console.warn(`⚠️ No se pudo enviar QR por WhatsApp a ${ownerPhone}`);
           }
         } catch (whatsappError) {
           console.error('⚠️ Error al enviar WhatsApp:', whatsappError);

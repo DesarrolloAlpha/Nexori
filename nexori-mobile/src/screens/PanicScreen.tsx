@@ -142,7 +142,7 @@ export default function PanicScreen() {
     quickAccessShortcutEnabled && !canMonitorAlerts && canTriggerPanic;
 
   const handleGoToAttention = () => {
-    navigation.navigate('Main' as never, { screen: 'Alertas' } as never);
+    (navigation as any).navigate('Main', { screen: 'Alertas' });
   };
 
   return (

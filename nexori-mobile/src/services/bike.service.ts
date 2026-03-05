@@ -81,6 +81,26 @@ class BikeService {
       throw error;
     }
   }
+
+  async update(id: string, data: Partial<CreateBikeData>) {
+    try {
+      const response = await api.put(`/bikes/${id}`, data);
+      return response.data.data.bike;
+    } catch (error) {
+      console.error('Error updating bike:', error);
+      throw error;
+    }
+  }
+
+  async resendWhatsApp(id: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const response = await api.post(`/bikes/${id}/resend-whatsapp`);
+      return response.data;
+    } catch (error: any) {
+      const message = error?.response?.data?.message || 'No se pudo reenviar el QR';
+      return { success: false, message };
+    }
+  }
 }
 
 export default new BikeService();

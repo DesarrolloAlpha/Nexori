@@ -1,36 +1,60 @@
 // src/services/whatsapp.service.ts
-import dotenv from 'dotenv';
+import crypto from 'crypto';
 
-dotenv.config();
+// ── Tipos públicos ──────────────────────────────────────────────────────────
 
-// ── Tipos ──────────────────────────────────────────────────────────────────
+export interface WhatsAppTemplateComponent {
+  type: 'header' | 'body' | 'button';
+  sub_type?: 'url' | 'quick_reply';
+  index?: number;
+  parameters: Array<
+    | { type: 'text'; text: string }
+    | { type: 'image'; image: { link: string } }
+    | { type: 'document'; document: { link: string; filename?: string } }
+    | { type: 'payload'; payload: string }
+  >;
+}
 
-interface WhatsAppTextMessage {
+export interface WhatsAppSendResult {
+  messaging_product: string;
+  contacts: Array<{ input: string; wa_id: string }>;
+  messages: Array<{ id: string }>;
+}
+
+export interface PhoneNumberInfo {
+  id: string;
+  display_phone_number: string;
+  verified_name: string;
+  quality_rating: string;
+}
+
+// ── Tipos internos ──────────────────────────────────────────────────────────
+
+interface WhatsAppTextPayload {
   messaging_product: 'whatsapp';
   recipient_type: 'individual';
   to: string;
   type: 'text';
-  text: {
-    preview_url?: boolean;
-    body: string;
-  };
+  text: { preview_url?: boolean; body: string };
 }
 
-interface WhatsAppImageMessage {
+interface WhatsAppImagePayload {
   messaging_product: 'whatsapp';
   recipient_type: 'individual';
   to: string;
   type: 'image';
-  image: {
-    link: string;
-    caption?: string;
-  };
+  image: { link: string; caption?: string };
 }
 
-interface WhatsAppResponse {
-  messaging_product: string;
-  contacts: Array<{ input: string; wa_id: string }>;
-  messages: Array<{ id: string }>;
+interface WhatsAppTemplatePayload {
+  messaging_product: 'whatsapp';
+  to: string;
+  type: 'template';
+  template: {
+    name: string;
+    language: { code: string };
+    components?: WhatsAppTemplateComponent[];
+  };
 }
 
 interface MetaErrorBody {
@@ -43,54 +67,161 @@ interface MetaErrorBody {
   };
 }
 
-// ── Códigos de error Meta que indican token inválido/expirado ──────────────
-// https://developers.facebook.com/docs/graph-api/guides/error-handling/
-const TOKEN_ERROR_CODES = new Set([190]); // OAuthException — token inválido, expirado o revocado
+// ── Constantes ──────────────────────────────────────────────────────────────
 
-// ── Clase ──────────────────────────────────────────────────────────────────
+/** Códigos que indican token inválido/expirado — marcar como inválido, no reintentar */
+const TOKEN_ERROR_CODES = new Set([190]);
+
+/**
+ * Códigos Meta que son errores de cliente (4xx semánticos) — no reintentar.
+ * 100: parámetro inválido · 131030: límite de tasa de plantillas
+ * 132000/132001: plantilla no encontrada o inactiva
+ * 133010: número no registrado en WhatsApp
+ */
+const NO_RETRY_CODES = new Set([100, 131030, 132000, 132001, 133010, 190]);
+
+const API_TIMEOUT_MS = 12_000;
+const MAX_RETRIES    = 2;
+
+// ── Clase ───────────────────────────────────────────────────────────────────
 
 export class WhatsAppService {
-  private apiUrl: string;
-  private phoneNumberId: string;
+  private readonly apiBase: string;
+  private readonly phoneNumberId: string;
   private accessToken: string;
 
-  /** true = token válido en el último chequeo; false = expirado o inválido */
-  private tokenValid = true;
-  /** Fecha en la que se detectó por primera vez que el token era inválido */
+  private tokenValid           = true;
   private tokenInvalidSince: Date | null = null;
-  /** Fecha del último intento de validación */
-  private lastValidatedAt: Date | null = null;
+  private lastValidatedAt: Date | null   = null;
 
   constructor() {
-    this.apiUrl         = process.env.WHATSAPP_API_URL || 'https://graph.facebook.com/v21.0';
-    this.phoneNumberId  = process.env.WHATSAPP_PHONE_NUMBER_ID || '';
-    this.accessToken    = process.env.WHATSAPP_ACCESS_TOKEN || '';
+    // Permitir override completo con WHATSAPP_API_URL; si no, construir desde versión.
+    const version = process.env.WHATSAPP_API_VERSION || 'v25.0';
+    this.apiBase = process.env.WHATSAPP_API_URL
+      ? process.env.WHATSAPP_API_URL.replace(/\/$/, '')
+      : `https://graph.facebook.com/${version}`;
+
+    this.phoneNumberId = (process.env.WHATSAPP_PHONE_NUMBER_ID || '').trim();
+    this.accessToken   = (process.env.WHATSAPP_ACCESS_TOKEN   || '').trim();
 
     if (!this.phoneNumberId || !this.accessToken) {
       console.warn('⚠️  WhatsApp: WHATSAPP_PHONE_NUMBER_ID o WHATSAPP_ACCESS_TOKEN no configurados.');
     }
   }
 
-  // ── Helpers privados ──────────────────────────────────────────────────────
+  // ── Helpers estáticos ─────────────────────────────────────────────────────
 
-  private formatPhoneNumber(phone: string): string {
-    let cleaned = phone.replace(/[\s\-\(\)]/g, '');
-    if (cleaned.startsWith('+')) cleaned = cleaned.substring(1);
-    if (!cleaned.startsWith('57') && cleaned.length === 10) cleaned = '57' + cleaned;
+  /**
+   * Valida y normaliza un número de teléfono a E.164 sin '+'.
+   * Acepta: +573001112233, 573001112233, 3001112233 (asume Colombia).
+   * Lanza Error si el formato es inválido.
+   */
+  static formatE164(phone: string): string {
+    const cleaned = phone.replace(/[\s\-\(\)\+]/g, '');
+
+    if (!/^\d{7,15}$/.test(cleaned)) {
+      throw new Error(
+        `Número de teléfono inválido: "${phone}". ` +
+        'Debe tener entre 7 y 15 dígitos (formato E.164, ej: 573001112233).'
+      );
+    }
+
+    // Asumir Colombia (57) si tiene exactamente 10 dígitos sin código de país
+    if (cleaned.length === 10 && !cleaned.startsWith('57')) {
+      return '57' + cleaned;
+    }
+
     return cleaned;
   }
 
+  // ── Método centralizado de llamada a Graph API ────────────────────────────
+
   /**
-   * Analiza la respuesta de la API de Meta.
-   * Si detecta un error de token (código 190), marca el token como inválido
-   * y emite instrucciones claras en la consola.
+   * Ejecuta una llamada autenticada a la Graph API de Meta.
+   * - Añade Authorization header sin exponer el token en logs.
+   * - Aplica timeout con AbortController.
+   * - Reintenta errores transitorios (red, 429, 5xx) con backoff lineal.
+   * - Para errores no recuperables (4xx Meta), lanza inmediatamente.
    */
+  private async callMetaAPI<T>(
+    endpoint: string,
+    options: Omit<RequestInit, 'headers'> & { extraHeaders?: Record<string, string> } = {},
+    retries = MAX_RETRIES
+  ): Promise<T> {
+    const url = endpoint.startsWith('http') ? endpoint : `${this.apiBase}/${endpoint}`;
+    const controller = new AbortController();
+    const timerId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+
+    const { extraHeaders, ...fetchOptions } = options;
+
+    let lastErr: unknown;
+
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      if (attempt > 0) {
+        await new Promise(r => setTimeout(r, attempt * 1_000));
+      }
+
+      try {
+        const response = await fetch(url, {
+          ...fetchOptions,
+          headers: {
+            'Authorization': `Bearer ${this.accessToken}`, // token nunca se loggea
+            'Content-Type': 'application/json',
+            ...extraHeaders,
+          },
+          signal: controller.signal,
+        });
+
+        if (response.ok) {
+          clearTimeout(timerId);
+          return response.json() as Promise<T>;
+        }
+
+        const body = await response.json().catch(() => ({})) as MetaErrorBody;
+        const code = body?.error?.code ?? 0;
+
+        // Errores de cliente Meta — no reintentar
+        if (NO_RETRY_CODES.has(code) || (response.status >= 400 && response.status < 500)) {
+          clearTimeout(timerId);
+          this.handleMetaError(body);
+          const err: any = new Error(body?.error?.message ?? `HTTP ${response.status}`);
+          err.metaCode = code;
+          err.metaType = body?.error?.type;
+          throw err;
+        }
+
+        // 5xx / 429 — transitorio, reintentar
+        console.warn(
+          `⚠️  WhatsApp API: ${response.status} (intento ${attempt + 1}/${retries + 1}) — ` +
+          `${body?.error?.message ?? 'error transitorio'}`
+        );
+        lastErr = new Error(`HTTP ${response.status}: ${body?.error?.message}`);
+
+      } catch (err: any) {
+        if (err?.metaCode !== undefined) {
+          clearTimeout(timerId);
+          throw err; // error Meta ya procesado
+        }
+        const isTimeout = err?.name === 'AbortError';
+        console.warn(
+          `⚠️  WhatsApp API: ${isTimeout ? 'timeout' : 'error de red'} ` +
+          `(intento ${attempt + 1}/${retries + 1})`
+        );
+        lastErr = err;
+      }
+    }
+
+    clearTimeout(timerId);
+    throw lastErr;
+  }
+
+  // ── Manejo de errores Meta ────────────────────────────────────────────────
+
   private handleMetaError(errorBody: MetaErrorBody): void {
     const err = errorBody?.error;
     if (!err) return;
 
     if (TOKEN_ERROR_CODES.has(err.code)) {
-      // Token expirado/inválido/revocado
       this.tokenValid = false;
       this.tokenInvalidSince = this.tokenInvalidSince ?? new Date();
 
@@ -98,30 +229,49 @@ export class WhatsAppService {
       console.error('╔══════════════════════════════════════════════════════════════╗');
       console.error('║  ❌  TOKEN DE WHATSAPP INVÁLIDO O EXPIRADO                   ║');
       console.error('╠══════════════════════════════════════════════════════════════╣');
-      console.error(`║  Código:    ${err.code}  Subcódigo: ${err.error_subcode ?? 'N/A'}                           ║`);
-      console.error(`║  Mensaje:   ${(err.message ?? '').substring(0, 54).padEnd(54)}  ║`);
+      console.error(`║  Código: ${err.code}  Subcódigo: ${String(err.error_subcode ?? 'N/A').padEnd(43)}║`);
       console.error('╠══════════════════════════════════════════════════════════════╣');
-      console.error('║  CÓMO OBTENER UN TOKEN PERMANENTE (nunca expira):            ║');
-      console.error('║  1. Meta Business Manager → Configuración → Usuarios del    ║');
-      console.error('║     sistema → Crear usuario del sistema                      ║');
-      console.error('║  2. Asignar el rol "Empleado" + agregar app de WhatsApp      ║');
-      console.error('║  3. Generar token → seleccionar "whatsapp_business_messaging"║');
-      console.error('║  4. Elegir expiración: "Nunca"                               ║');
-      console.error('║  5. Copiar token y actualizar WHATSAPP_ACCESS_TOKEN en .env  ║');
-      console.error('║  ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─  ║');
-      console.error('║  O usa el endpoint (solo admin):                             ║');
-      console.error('║  PUT /api/admin/whatsapp/token  { "token": "NUEVO_TOKEN" }  ║');
+      console.error('║  Obtener token permanente (System User, nunca expira):       ║');
+      console.error('║  1. business.facebook.com → Config → Usuarios del sistema   ║');
+      console.error('║  2. Nuevo usuario → agregar app → generar token              ║');
+      console.error('║  3. Permisos: whatsapp_business_messaging                    ║');
+      console.error('║  4. Expiración: Nunca → copiar y actualizar .env             ║');
+      console.error('║  O usa: PUT /api/admin/whatsapp/token { "token": "..." }     ║');
       console.error('╚══════════════════════════════════════════════════════════════╝');
       console.error('');
     } else {
-      console.error('❌ Error de WhatsApp API:', err);
+      // Nunca loggear el token; solo datos seguros del error
+      console.error('❌ Error de WhatsApp API:', {
+        code:    err.code,
+        type:    err.type,
+        message: err.message,
+        subcode: err.error_subcode,
+        trace:   err.fbtrace_id,
+      });
     }
   }
 
+  // ── Métodos públicos ──────────────────────────────────────────────────────
+
   /**
-   * Llama a la API de Meta para verificar si el token actual es válido.
-   * Se ejecuta automáticamente al iniciar el servidor.
+   * Obtiene información del número de teléfono desde la Graph API.
+   * Útil para healthchecks y validar que PHONE_NUMBER_ID corresponde al número real.
    */
+  async getPhoneNumberInfo(): Promise<PhoneNumberInfo | null> {
+    if (!this.phoneNumberId || !this.accessToken) return null;
+
+    try {
+      return await this.callMetaAPI<PhoneNumberInfo>(
+        `${this.apiBase}/${this.phoneNumberId}` +
+        '?fields=display_phone_number,verified_name,quality_rating',
+        {},
+        0 // sin reintentos para healthchecks
+      );
+    } catch {
+      return null;
+    }
+  }
+
   async validateToken(): Promise<boolean> {
     if (!this.phoneNumberId || !this.accessToken) {
       this.tokenValid = false;
@@ -131,34 +281,23 @@ export class WhatsAppService {
     this.lastValidatedAt = new Date();
 
     try {
-      const response = await fetch(
-        `${this.apiUrl}/${this.phoneNumberId}?fields=display_phone_number,verified_name`,
-        {
-          headers: { 'Authorization': `Bearer ${this.accessToken}` },
-        }
-      );
-
-      if (response.ok) {
+      const info = await this.getPhoneNumberInfo();
+      if (info) {
         this.tokenValid = true;
         this.tokenInvalidSince = null;
-        console.log('✅ WhatsApp token validado correctamente');
+        console.log(
+          `✅ WhatsApp token validado — ${info.display_phone_number} (${info.verified_name})`
+        );
         return true;
       }
-
-      const errorBody = await response.json().catch(() => ({})) as MetaErrorBody;
-      this.handleMetaError(errorBody);
+      this.tokenValid = false;
       return false;
-    } catch (err) {
-      console.warn('⚠️  WhatsApp: No se pudo validar el token (posible problema de red):', err);
-      // No marcar como inválido por problemas de red
+    } catch {
+      console.warn('⚠️  WhatsApp: no se pudo validar el token (posible error de red).');
       return false;
     }
   }
 
-  /**
-   * Actualiza el access token en memoria sin necesitar reiniciar el servidor.
-   * El token nuevo es validado antes de aceptarse.
-   */
   async updateToken(newToken: string): Promise<{ success: boolean; message: string }> {
     if (!newToken?.trim()) {
       return { success: false, message: 'El token no puede estar vacío.' };
@@ -169,103 +308,137 @@ export class WhatsAppService {
 
     const valid = await this.validateToken();
     if (valid) {
-      console.log('🔑 WhatsApp token actualizado y validado correctamente');
+      console.log('🔑 WhatsApp token actualizado y validado');
       return { success: true, message: 'Token actualizado y validado correctamente.' };
     }
 
-    // Si el token nuevo tampoco es válido, restaurar el anterior
     this.accessToken = oldToken;
-    return { success: false, message: 'El nuevo token es inválido o ha expirado. Se mantuvo el token anterior.' };
+    return {
+      success: false,
+      message: 'El nuevo token es inválido o ha expirado. Se mantuvo el token anterior.',
+    };
   }
 
-  // ── Métodos públicos de envío ─────────────────────────────────────────────
+  // ── Envío de mensajes ─────────────────────────────────────────────────────
 
-  async sendTextMessage(to: string, message: string): Promise<WhatsAppResponse | null> {
+  async sendTextMessage(to: string, message: string): Promise<WhatsAppSendResult | null> {
     if (!this.isConfigured()) {
-      console.warn('⚠️  WhatsApp: Servicio no disponible (token inválido o no configurado).');
+      console.warn('⚠️  WhatsApp: servicio no disponible.');
       return null;
     }
 
     try {
-      const formattedPhone = this.formatPhoneNumber(to);
-      const payload: WhatsAppTextMessage = {
+      const formattedPhone = WhatsAppService.formatE164(to);
+      const payload: WhatsAppTextPayload = {
         messaging_product: 'whatsapp',
-        recipient_type: 'individual',
-        to: formattedPhone,
-        type: 'text',
-        text: { preview_url: false, body: message },
+        recipient_type:    'individual',
+        to:                formattedPhone,
+        type:              'text',
+        text:              { preview_url: false, body: message },
       };
 
-      const response = await fetch(
-        `${this.apiUrl}/${this.phoneNumberId}/messages`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${this.accessToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(payload),
-        }
+      const data = await this.callMetaAPI<WhatsAppSendResult>(
+        `${this.apiBase}/${this.phoneNumberId}/messages`,
+        { method: 'POST', body: JSON.stringify(payload) }
       );
-
-      if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({})) as MetaErrorBody;
-        this.handleMetaError(errorBody);
-        return null;
-      }
-
-      const data = await response.json() as WhatsAppResponse;
-      console.log('✅ Mensaje de WhatsApp enviado:', data);
+      console.log(`✅ Texto enviado a ${formattedPhone} — wamid: ${data.messages?.[0]?.id}`);
       return data;
-    } catch (error) {
-      console.error('❌ Error en WhatsAppService.sendTextMessage:', error);
+    } catch (err: any) {
+      console.error('❌ sendTextMessage:', err?.message ?? err);
       return null;
     }
   }
 
-  async sendImageMessage(to: string, imageUrl: string, caption?: string): Promise<WhatsAppResponse | null> {
+  async sendImageMessage(
+    to: string,
+    imageUrl: string,
+    caption?: string
+  ): Promise<WhatsAppSendResult | null> {
     if (!this.isConfigured()) {
-      console.warn('⚠️  WhatsApp: Servicio no disponible (token inválido o no configurado).');
+      console.warn('⚠️  WhatsApp: servicio no disponible.');
       return null;
     }
 
     try {
-      const formattedPhone = this.formatPhoneNumber(to);
-      const payload: WhatsAppImageMessage = {
+      const formattedPhone = WhatsAppService.formatE164(to);
+      const payload: WhatsAppImagePayload = {
         messaging_product: 'whatsapp',
-        recipient_type: 'individual',
-        to: formattedPhone,
-        type: 'image',
-        image: { link: imageUrl, caption: caption || undefined },
+        recipient_type:    'individual',
+        to:                formattedPhone,
+        type:              'image',
+        image:             { link: imageUrl, ...(caption ? { caption } : {}) },
       };
 
-      const response = await fetch(
-        `${this.apiUrl}/${this.phoneNumberId}/messages`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${this.accessToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(payload),
-        }
+      const data = await this.callMetaAPI<WhatsAppSendResult>(
+        `${this.apiBase}/${this.phoneNumberId}/messages`,
+        { method: 'POST', body: JSON.stringify(payload) }
       );
-
-      if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({})) as MetaErrorBody;
-        this.handleMetaError(errorBody);
-        return null;
-      }
-
-      const data = await response.json() as WhatsAppResponse;
-      console.log('✅ Imagen de WhatsApp enviada:', data);
+      console.log(`✅ Imagen enviada a ${formattedPhone} — wamid: ${data.messages?.[0]?.id}`);
       return data;
-    } catch (error) {
-      console.error('❌ Error en WhatsAppService.sendImageMessage:', error);
+    } catch (err: any) {
+      console.error('❌ sendImageMessage:', err?.message ?? err);
       return null;
     }
   }
 
+  /**
+   * Envía un mensaje usando una plantilla aprobada por Meta.
+   * @param to           Número en cualquier formato (se normaliza a E.164 sin '+')
+   * @param templateName Nombre exacto de la plantilla (ej: "registr_qr")
+   * @param languageCode Código de idioma aprobado (ej: "es", "es_CO", "en_US")
+   * @param components   Variables opcionales (header, body, buttons)
+   */
+  async sendTemplate(
+    to: string,
+    templateName: string,
+    languageCode: string,
+    components?: WhatsAppTemplateComponent[]
+  ): Promise<WhatsAppSendResult | null> {
+    if (!this.isConfigured()) {
+      console.warn('⚠️  WhatsApp: servicio no disponible.');
+      return null;
+    }
+
+    if (!templateName?.trim()) throw new Error('templateName es requerido.');
+    if (!languageCode?.trim()) throw new Error('languageCode es requerido.');
+
+    try {
+      const formattedPhone = WhatsAppService.formatE164(to);
+      const payload: WhatsAppTemplatePayload = {
+        messaging_product: 'whatsapp',
+        to:                formattedPhone,
+        type:              'template',
+        template: {
+          name:     templateName.trim(),
+          language: { code: languageCode.trim() },
+          ...(components?.length ? { components } : {}),
+        },
+      };
+
+      const data = await this.callMetaAPI<WhatsAppSendResult>(
+        `${this.apiBase}/${this.phoneNumberId}/messages`,
+        { method: 'POST', body: JSON.stringify(payload) }
+      );
+      console.log(
+        `✅ Plantilla "${templateName}" enviada a ${formattedPhone} — wamid: ${data.messages?.[0]?.id}`
+      );
+      return data;
+    } catch (err: any) {
+      console.error(`❌ sendTemplate("${templateName}"):`, err?.message ?? err);
+      return null;
+    }
+  }
+
+  /**
+   * Envía el comprobante QR de registro de bicicleta por WhatsApp.
+   * Usa la plantilla registr_qr si WHATSAPP_TEMPLATE_NAME está configurado;
+   * de lo contrario, envía imagen con caption como fallback.
+   *
+   * Estructura de registr_qr:
+   *   Header: imagen (QR)
+   *   Body:   {{1}} etiqueta · {{2}} nombre dueño · {{3}} serie · {{4}} marca · {{5}} modelo
+   *   Footer: estático "Nexori - Sistema de gestión en seguridad"
+   */
   async sendBikeQRCode(
     phoneNumber: string,
     qrCodeUrl: string,
@@ -280,8 +453,39 @@ export class WhatsAppService {
     if (!this.isConfigured()) return false;
 
     try {
+      const templateName = process.env.WHATSAPP_TEMPLATE_NAME;
+      const templateLang = process.env.WHATSAPP_TEMPLATE_LANG || 'es';
+
+      if (templateName) {
+        const bikeLabel = `${bikeData.brand} ${bikeData.model}`.trim();
+        const components: WhatsAppTemplateComponent[] = [
+          {
+            type:       'header',
+            parameters: [{ type: 'image', image: { link: qrCodeUrl } }],
+          },
+          {
+            type: 'body',
+            parameters: [
+              { type: 'text', text: bikeLabel            }, // {{1}} Comprobante de registro – X
+              { type: 'text', text: bikeData.ownerName   }, // {{2}} Hola X
+              { type: 'text', text: bikeData.serialNumber}, // {{3}} Serie
+              { type: 'text', text: bikeData.brand       }, // {{4}} Marca
+              { type: 'text', text: bikeData.model       }, // {{5}} Modelo
+            ],
+          },
+        ];
+
+        const result = await this.sendTemplate(phoneNumber, templateName, templateLang, components);
+        if (result) {
+          console.log(`✅ QR enviado vía plantilla "${templateName}" a ${phoneNumber}`);
+          return true;
+        }
+        console.warn('⚠️  Plantilla falló — intentando fallback con imagen libre...');
+      }
+
+      // Fallback: imagen con caption (cuando la plantilla no está configurada o falla)
       const bikeLabel = `${bikeData.brand} ${bikeData.model}`.trim();
-      const imageCaption = `
+      const caption = `
 *Comprobante de registro – ${bikeLabel}*
 
 Hola ${bikeData.ownerName}, adjuntamos el comprobante QR correspondiente al registro exitoso de su bicicleta en el sistema Nexori.
@@ -297,36 +501,35 @@ Presenta este QR en los puntos de control al ingresar o retirar tu bicicleta par
 ℹ️ Este comprobante es personal y está vinculado únicamente a la bicicleta registrada.
       `.trim();
 
-      const imageResult = await this.sendImageMessage(phoneNumber, qrCodeUrl, imageCaption);
-      if (!imageResult) {
-        console.error('❌ No se pudo enviar el comprobante con QR a WhatsApp');
+      const result = await this.sendImageMessage(phoneNumber, qrCodeUrl, caption);
+      if (!result) {
+        console.error('❌ No se pudo enviar el comprobante QR a WhatsApp');
         return false;
       }
 
-      console.log(`✅ QR Code enviado exitosamente a ${phoneNumber}`);
+      console.log(`✅ QR Code enviado (fallback imagen) a ${phoneNumber}`);
       return true;
-    } catch (error) {
-      console.error('❌ Error en WhatsAppService.sendBikeQRCode:', error);
+    } catch (err: any) {
+      console.error('❌ sendBikeQRCode:', err?.message ?? err);
       return false;
     }
   }
 
-  // ── Consultas de estado ───────────────────────────────────────────────────
+  // ── Estado del servicio ───────────────────────────────────────────────────
 
-  /** El servicio está listo para enviar mensajes */
   isConfigured(): boolean {
     return !!(this.phoneNumberId && this.accessToken && this.tokenValid);
   }
 
-  /** Devuelve un resumen del estado del servicio para el endpoint de admin */
   getStatus() {
     return {
-      configured: !!(this.phoneNumberId && this.accessToken),
-      tokenValid: this.tokenValid,
-      tokenInvalidSince: this.tokenInvalidSince?.toISOString() ?? null,
-      lastValidatedAt: this.lastValidatedAt?.toISOString() ?? null,
-      phoneNumberId: this.phoneNumberId || null,
-      ready: this.isConfigured(),
+      configured:          !!(this.phoneNumberId && this.accessToken),
+      tokenValid:          this.tokenValid,
+      tokenInvalidSince:   this.tokenInvalidSince?.toISOString() ?? null,
+      lastValidatedAt:     this.lastValidatedAt?.toISOString()   ?? null,
+      phoneNumberId:       this.phoneNumberId || null,
+      apiVersion:          this.apiBase.match(/v\d+\.\d+/)?.[0]  ?? 'unknown',
+      ready:               this.isConfigured(),
     };
   }
 }

@@ -164,8 +164,8 @@ class NotificationService {
   /**
    * Mostrar notificación local inmediata para alertas de pánico
    */
-  async sendPanicNotification(userName: string, priority: 'low' | 'medium' | 'high' = 'high'): Promise<void> {
-    const priorityLabels = { low: 'Baja', medium: 'Media', high: 'Alta' };
+  async sendPanicNotification(userName: string, priority: 'low' | 'medium' | 'high' | 'critical' = 'high'): Promise<void> {
+    const priorityLabels = { low: 'Baja', medium: 'Media', high: 'Alta', critical: 'Crítica' };
 
     await Notifications.scheduleNotificationAsync({
       content: {
