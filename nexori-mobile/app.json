@@ -5,9 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-
     "icon": "./assets/icon.png",
-
     "splash": {
       "image": "./assets/splash.png",
       "backgroundColor": "#191E2B",
@@ -22,7 +20,9 @@
       "buildNumber": "1",
       "icon": "./assets/icon.png",
       "infoPlist": {
-        "UIBackgroundModes": ["remote-notification"]
+        "UIBackgroundModes": [
+          "remote-notification"
+        ]
       }
     },
     "android": {
@@ -33,19 +33,23 @@
       "package": "com.nexori.mobile",
       "versionCode": 1,
       "permissions": [
-        "RECEIVE_BOOT_COMPLETED",
-        "VIBRATE",
-        "POST_NOTIFICATIONS"
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.VIBRATE",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "plugins": [
       "expo-font",
-      "expo-barcode-scanner",
-      "expo-secure-store",
-      ["expo-image-picker", {
-        "photosPermission": "Acceso a fotos",
-        "cameraPermission": "Acceso a cámara"
-      }],
+"expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Acceso a fotos",
+          "cameraPermission": "Acceso a cámara"
+        }
+      ],
       [
         "expo-notifications",
         {
@@ -55,6 +59,11 @@
           "iosDisplayInForeground": true
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "354ede0b-0b38-4c49-bc02-2ab7101eb0c7"
+      }
+    }
   }
 }
